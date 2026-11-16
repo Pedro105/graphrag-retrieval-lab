@@ -21,12 +21,11 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-import anthropic
-import instructor
 import structlog
 from pydantic import BaseModel, Field
 
 from graphrag_lab.core.config import get_settings
+from graphrag_lab.llm.client import StructuredLLM, get_llm
 from graphrag_lab.models.claim import apply_claim, derive_active_view
 from graphrag_lab.models.fact_claim import ClaimAssertion, ClaimStatus, FactClaim
 
@@ -155,15 +154,15 @@ one-sentence justification in `reason` and a calibrated confidence in [0,1].\
 
 
 class ClaimJudge:
-    """LLM fallback: Haiku 4.5 via Instructor, same pattern as LLMClassifier."""
+    """LLM fallback for the one ambiguous adjudication case (row 6)."""
+
+    def __init__(self, llm: StructuredLLM | None = None) -> None:
+        self._llm = llm
 
     async def judge(
         self, assertion: ClaimAssertion, candidates: list[FactClaim]
     ) -> AdjudicationVerdict:
         settings = get_settings()
-        client = instructor.from_anthropic(
-            anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-        )
         existing = (
             ", ".join(sorted({c.raw_predicate for c in candidates})) or assertion.raw_predicate
         )
@@ -176,14 +175,14 @@ class ClaimJudge:
             "Does the new fact stand independently, supersede the existing one(s), "
             "or dispute them?"
         )
-        result: AdjudicationVerdict = await client.chat.completions.create(
+        response = await (self._llm or get_llm()).generate(
             model=settings.classifier_model,
-            max_tokens=512,
             system=_JUDGE_SYSTEM_PROMPT,
+            user=user,
             response_model=AdjudicationVerdict,
-            messages=[{"role": "user", "content": user}],
+            max_tokens=512,
         )
-        return result
+        return response.value
 
 
 async def adjudicate(

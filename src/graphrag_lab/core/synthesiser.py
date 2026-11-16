@@ -3,9 +3,8 @@ grounded strictly in the retrieved subgraph.
 
 Optional and additive -- only runs when recall() is called with
 synthesise=True, and never replaces the structured entities/relations (see
-models/recall.py's RecallResult.synthesis). Haiku 4.5 via Instructor, mirroring
-the client/response_model pattern in extraction/extractor.py and
-core/classifier.py.
+models/recall.py's RecallResult.synthesis). Structured output via
+llm/client.py, like extraction and the classifier.
 
 The subgraph is serialised into a compact text representation (not raw JSON,
 not a full Pydantic dump) by `serialise_subgraph` -- a pure, independently
@@ -19,11 +18,10 @@ from collections import defaultdict
 from typing import Any
 from uuid import UUID
 
-import anthropic
-import instructor
 import structlog
 
 from graphrag_lab.core.config import get_settings
+from graphrag_lab.llm.client import StructuredLLM, get_llm
 from graphrag_lab.models.claim import Claim, derive_active_view
 from graphrag_lab.models.entity import Entity
 from graphrag_lab.models.recall import RecallResult
@@ -181,23 +179,11 @@ def serialise_subgraph(result: RecallResult) -> str:
 
 
 class RecallSynthesiser:
-    """Synthesise a prose answer from a RecallResult via Haiku 4.5.
+    """Synthesise a prose answer from a RecallResult. `llm` is injectable so
+    unit tests run fully offline."""
 
-    `client` is injectable (an Instructor-wrapped Anthropic async client) so
-    unit tests can run fully offline; in production it's built lazily from
-    settings, mirroring extraction/extractor.py and core/classifier.py.
-    """
-
-    def __init__(self, client: instructor.AsyncInstructor | None = None) -> None:
-        self._client = client
-
-    def _get_client(self) -> instructor.AsyncInstructor:
-        if self._client is None:
-            settings = get_settings()
-            self._client = instructor.from_anthropic(
-                anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-            )
-        return self._client
+    def __init__(self, llm: StructuredLLM | None = None) -> None:
+        self._llm = llm
 
     async def synthesise(
         self,
@@ -217,14 +203,14 @@ class RecallSynthesiser:
             )
 
         settings = get_settings()
-        client = self._get_client()
-        synthesis: SynthesisResult = await client.chat.completions.create(
+        response = await (self._llm or get_llm()).generate(
             model=settings.synthesis_model,
-            max_tokens=1024,
             system=SYNTHESIS_SYSTEM_PROMPT,
+            user=serialise_subgraph(result),
             response_model=SynthesisResult,
-            messages=[{"role": "user", "content": serialise_subgraph(result)}],
+            max_tokens=1024,
         )
+        synthesis = response.value
 
         # Keep only ids the model cited that actually exist in the subgraph, so
         # grounding can't reference an entity that wasn't retrieved.

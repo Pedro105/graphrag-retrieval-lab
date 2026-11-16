@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 from graphrag_lab.core.service import recall
 from graphrag_lab.core.synthesiser import RecallSynthesiser, serialise_subgraph
 from graphrag_lab.graph.store import GraphStore
+from graphrag_lab.llm.client import LLMResponse
 from graphrag_lab.models.claim import apply_claim
 from graphrag_lab.models.entity import Entity
 from graphrag_lab.models.provenance import Provenance
@@ -44,11 +45,11 @@ def make_entity(**overrides) -> Entity:
     return Entity(**defaults)
 
 
-def make_client(synthesis: SynthesisResult) -> AsyncMock:
-    """An Instructor-shaped async client whose create() returns `synthesis`."""
-    client = AsyncMock()
-    client.chat.completions.create = AsyncMock(return_value=synthesis)
-    return client
+def make_llm(synthesis: SynthesisResult) -> AsyncMock:
+    """A StructuredLLM stand-in whose generate() returns `synthesis`."""
+    llm = AsyncMock()
+    llm.generate = AsyncMock(return_value=LLMResponse(value=synthesis, tokens=0, cached=False))
+    return llm
 
 
 async def test_synthesise_populates_answer_and_filters_grounded_ids():
@@ -65,12 +66,12 @@ async def test_synthesise_populates_answer_and_filters_grounded_ids():
         confidence="high",
         caveat=None,
     )
-    client = make_client(returned)
-    synthesiser = RecallSynthesiser(client=client)
+    llm = make_llm(returned)
+    synthesiser = RecallSynthesiser(llm=llm)
 
     out = await synthesiser.synthesise("who is Korrigan?", result, SCOPE)
 
-    client.chat.completions.create.assert_awaited_once()
+    llm.generate.assert_awaited_once()
     assert out.answer == "Korrigan Cells Ltd is a tier-2 supplier."
     # Bogus id dropped; only the real subgraph id survives.
     assert out.grounded_entity_ids == [str(real.id)]
@@ -79,15 +80,15 @@ async def test_synthesise_populates_answer_and_filters_grounded_ids():
 
 async def test_synthesise_short_circuits_on_empty_subgraph():
     result = RecallResult(query="anything?", scope=SCOPE, entities=[], stats=STATS)
-    client = make_client(
+    llm = make_llm(
         SynthesisResult(answer="should not be used", grounded_entity_ids=[], confidence="high")
     )
-    synthesiser = RecallSynthesiser(client=client)
+    synthesiser = RecallSynthesiser(llm=llm)
 
     out = await synthesiser.synthesise("anything?", result, SCOPE)
 
     # No entities -> no LLM call, deterministic insufficient_data.
-    client.chat.completions.create.assert_not_awaited()
+    llm.generate.assert_not_awaited()
     assert out.confidence == "insufficient_data"
     assert out.grounded_entity_ids == []
     assert out.caveat

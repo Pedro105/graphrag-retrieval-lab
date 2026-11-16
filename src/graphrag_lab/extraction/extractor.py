@@ -1,11 +1,9 @@
-"""LLM-based entity/relation extraction via Instructor + Anthropic."""
-
-import anthropic
-import instructor
+"""LLM-based entity/relation extraction (structured output via llm/client.py)."""
 
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.extraction.prompts import EXTRACTION_SYSTEM_PROMPT
 from graphrag_lab.extraction.schemas import ExtractedEntity, ExtractedRelation, ExtractionResult
+from graphrag_lab.llm.client import StructuredLLM, get_llm
 
 
 def _build_user_message(content: str, existing_relation_types: list[str] | None) -> str:
@@ -42,38 +40,19 @@ def _build_user_message(content: str, existing_relation_types: list[str] | None)
     return context + content
 
 
-def _total_tokens(completion: object) -> int:
-    """Total (input + output) tokens from a raw Anthropic completion, or 0 if
-    usage isn't present. Defensive: the value feeds usage accounting only, so a
-    missing/oddly-shaped usage object must never break extraction."""
-    usage = getattr(completion, "usage", None)
-    if usage is None:
-        return 0
-    return int(getattr(usage, "input_tokens", 0) or 0) + int(
-        getattr(usage, "output_tokens", 0) or 0
-    )
-
-
 async def extract(
-    content: str, existing_relation_types: list[str] | None = None
+    content: str,
+    existing_relation_types: list[str] | None = None,
+    llm: StructuredLLM | None = None,
 ) -> tuple[list[ExtractedEntity], list[ExtractedRelation], int]:
-    """Extract entities and relations from `content`, returning them plus the
-    total tokens the extraction LLM call consumed (for usage accounting). The
-    token count is surfaced here rather than swallowed so the write path can log
-    it; it does not affect extraction behaviour."""
+    """Extract entities and relations from `content`. Also returns the tokens
+    the (original, uncached) LLM call consumed, for cost accounting."""
     settings = get_settings()
-    client = instructor.from_anthropic(
-        anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-    )
-
-    result, completion = await client.chat.completions.create_with_completion(
+    response = await (llm or get_llm()).generate(
         model=settings.extraction_model,
-        max_tokens=4096,
         system=EXTRACTION_SYSTEM_PROMPT,
+        user=_build_user_message(content, existing_relation_types),
         response_model=ExtractionResult,
-        messages=[
-            {"role": "user", "content": _build_user_message(content, existing_relation_types)}
-        ],
+        max_tokens=4096,
     )
-
-    return result.entities, result.relations, _total_tokens(completion)
+    return response.value.entities, response.value.relations, response.tokens

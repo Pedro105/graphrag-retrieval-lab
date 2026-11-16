@@ -1,6 +1,7 @@
 """Application configuration, loaded from environment variables / .env."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,12 @@ class Settings(BaseSettings):
     extraction_model: str = "claude-haiku-4-5-20251001"
     classifier_model: str = "claude-haiku-4-5-20251001"
     synthesis_model: str = "claude-haiku-4-5-20251001"
+    # Temperature 0 so extraction and judging are as repeatable as the API allows.
+    llm_temperature: float = 0.0
+    # Disk cache for every LLM call (see llm/client.py).
+    llm_cache_enabled: bool = True
+    llm_cache_dir: Path = Path(".cache/llm")
+
     vector_merge_threshold: float = 0.92
     vector_candidate_threshold: float = 0.80
 

@@ -6,9 +6,8 @@ Two stages (see docs/classifier_notes.md for the full rationale):
   1. HeuristicClassifier -- pure, free, deterministic signal extraction.
      Returns a (QueryClass, confidence) pair. The majority of queries are
      classifiable here.
-  2. LLMClassifier -- Haiku 4.5 via Instructor, called ONLY when the
-     heuristic confidence is below CONFIDENCE_THRESHOLD. Follows the same
-     Instructor pattern as extraction/extractor.py.
+  2. LLMClassifier -- structured LLM call (llm/client.py), made ONLY when
+     the heuristic confidence is below CONFIDENCE_THRESHOLD.
 
 QueryClassifier composes the two and maps the resulting class to a
 RetrievalStrategy via CLASS_TO_STRATEGY.
@@ -16,12 +15,11 @@ RetrievalStrategy via CLASS_TO_STRATEGY.
 
 import re
 
-import anthropic
-import instructor
 import structlog
 from pydantic import BaseModel, Field
 
 from graphrag_lab.core.config import get_settings
+from graphrag_lab.llm.client import StructuredLLM, get_llm
 from graphrag_lab.models.classification import (
     ClassifierResult,
     QueryClass,
@@ -246,23 +244,21 @@ class _LLMClassification(BaseModel):
 
 
 class LLMClassifier:
-    """Stage 2: Haiku 4.5 via Instructor, mirroring extraction/extractor.py.
-    Called only on low-confidence heuristic results.
-    """
+    """Stage 2: called only on low-confidence heuristic results."""
+
+    def __init__(self, llm: StructuredLLM | None = None) -> None:
+        self._llm = llm
 
     async def classify(self, query: str) -> _LLMClassification:
         settings = get_settings()
-        client = instructor.from_anthropic(
-            anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-        )
-        result: _LLMClassification = await client.chat.completions.create(
+        response = await (self._llm or get_llm()).generate(
             model=settings.classifier_model,
-            max_tokens=512,
             system=CLASSIFIER_SYSTEM_PROMPT,
+            user=query,
             response_model=_LLMClassification,
-            messages=[{"role": "user", "content": query}],
+            max_tokens=512,
         )
-        return result
+        return response.value
 
 
 class QueryClassifier:
