@@ -9,9 +9,9 @@ from uuid import uuid4
 
 from redis.exceptions import ResponseError
 
-from contextstore.graph.falkordb_store import FalkorDBGraphStore, _sanitize_fulltext_query
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
+from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore, _sanitize_fulltext_query
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
 
 
 def _node(entity_id, name: str, scope: Scope) -> MagicMock:

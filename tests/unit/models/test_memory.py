@@ -3,11 +3,11 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from contextstore.models.entity import Entity
-from contextstore.models.memory import Memory
-from contextstore.models.provenance import Provenance
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.memory import Memory
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
 
 
 def make_memory(**overrides) -> Memory:

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from contextstore.models.scope import Scope
+from graphrag_lab.models.scope import Scope
 
 
 def test_from_dict_and_to_query_dict_roundtrip():

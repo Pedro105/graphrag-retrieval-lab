@@ -12,8 +12,8 @@ import os
 import pytest
 from falkordb.asyncio import FalkorDB
 
-from contextstore.graph.falkordb_store import FalkorDBGraphStore
-from contextstore.models.scope import Scope
+from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.models.scope import Scope
 
 TENANT_ID = "eval_test"
 

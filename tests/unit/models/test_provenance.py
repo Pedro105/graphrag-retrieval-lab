@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from contextstore.models.provenance import Provenance
+from graphrag_lab.models.provenance import Provenance
 
 
 def test_minimal_provenance_has_sane_defaults():

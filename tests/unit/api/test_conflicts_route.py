@@ -9,13 +9,13 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from contextstore.api.app import app
-from contextstore.api.dependencies import get_graph_store
-from contextstore.graph.store import GraphStore
-from contextstore.models.entity import Entity
-from contextstore.models.fact_claim import FactClaim
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
+from graphrag_lab.api.app import app
+from graphrag_lab.api.dependencies import get_graph_store
+from graphrag_lab.graph.store import GraphStore
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.fact_claim import FactClaim
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
 
 TENANT = "conflicts_test"
 SCOPE = Scope.from_dict({"tenant_id": TENANT})

@@ -6,10 +6,10 @@ is the five named integration evals (test_coherence_evals.py).
 
 from uuid import uuid4
 
-from contextstore.models.fact_claim import ClaimAssertion, FactClaim
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
-from contextstore.resolution.conflict_resolver import AdjudicationVerdict, adjudicate
+from graphrag_lab.models.fact_claim import ClaimAssertion, FactClaim
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.resolution.conflict_resolver import AdjudicationVerdict, adjudicate
 
 SCOPE = Scope.from_dict({"tenant_id": "acme"})
 SUBJECT = uuid4()

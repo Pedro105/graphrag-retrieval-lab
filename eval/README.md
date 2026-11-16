@@ -1,4 +1,4 @@
-# ContextStore recall eval harness
+# Recall eval harness (smoke test)
 
 A minimal way to measure `/v1/recall` against ground truth instead of judging
 it by feel. This is the gate before multi-hop traversal or a query
@@ -47,7 +47,7 @@ uv run python eval/run_eval.py
 uv run python eval/run_eval.py \
   --base-url http://localhost:8000 \
   --dataset eval/dataset.yaml \
-  --tenant-id contextstore_demo \
+  --tenant-id demo \
   --limit 10 \
   --traversal-depth 1
 ```
@@ -109,7 +109,7 @@ To find real ground truth for a new case (don't guess at what's in the
 graph):
 
 ```bash
-curl -s "http://localhost:8000/v1/graph?tenant_id=contextstore_demo" | python3 -m json.tool
+curl -s "http://localhost:8000/v1/graph?tenant_id=demo" | python3 -m json.tool
 ```
 
 Read the actual entities/relations/claims it returns, then write a case
@@ -130,7 +130,7 @@ multi-hop traversal actually matters in practice (see the
    ```bash
    curl -s -X POST http://localhost:8000/v1/memories -H "Content-Type: application/json" -d '{
      "content": "Acme Corp also ordered 200 units of Product Z from Initech.",
-     "scope": {"tenant_id": "contextstore_demo"},
+     "scope": {"tenant_id": "demo"},
      "source": "crm-agent"
    }'
    ```
@@ -150,14 +150,14 @@ multi-hop traversal actually matters in practice (see the
        for content, source in sentences:
            r = client.post("/v1/memories", json={
                "content": content,
-               "scope": {"tenant_id": "contextstore_demo"},
+               "scope": {"tenant_id": "demo"},
                "source": source,
            })
            r.raise_for_status()
            print(content, "->", [e["name"] for e in r.json()["entities"]])
    ```
 
-3. Check what actually landed with `GET /v1/graph?tenant_id=contextstore_demo`
+3. Check what actually landed with `GET /v1/graph?tenant_id=demo`
    (entity resolution might merge things differently than you expect --
    don't assume, look).
 4. Add `dataset.yaml` cases against the real result, including ones that
@@ -177,7 +177,7 @@ paste this into a Claude chat:
 
 1. Paste the contents of `eval/dataset.yaml`.
 2. Paste the latest report from `eval/reports/`.
-3. Paste the raw output of `curl -s "http://localhost:8000/v1/graph?tenant_id=contextstore_demo"`.
+3. Paste the raw output of `curl -s "http://localhost:8000/v1/graph?tenant_id=demo"`.
 4. Ask: "Given this ground-truth dataset, this eval report, and this raw
    graph state, which FAIL cases look like genuine retrieval gaps vs. which
    look like the ground truth itself being wrong or underspecified? Are

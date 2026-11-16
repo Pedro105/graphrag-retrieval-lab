@@ -80,7 +80,7 @@ cp .env.example .env
 # Edit .env: set ANTHROPIC_API_KEY at minimum
 
 uv sync
-uv run uvicorn contextstore.api.app:app --reload
+uv run uvicorn graphrag_lab.api.app:app --reload
 ```
 
 Verify:
@@ -103,17 +103,17 @@ Opens at `http://localhost:3000`.
 
 ### MCP server (Claude Code / Claude Desktop)
 
-The MCP server is a standalone package in `contextstore-mcp/` that calls the
+The MCP server is a standalone package in `graphrag_lab-mcp/` that calls the
 backend over HTTP:
 
 ```bash
-claude mcp add contextstore \
+claude mcp add graphrag_lab \
   --env CONTEXTSTORE_API_KEY=csk_live_... \
   --env CONTEXTSTORE_API_URL=http://localhost:8000 \
-  -- uvx contextstore-mcp
+  -- uvx graphrag_lab-mcp
 ```
 
-See [`contextstore-mcp/README.md`](contextstore-mcp/README.md) for full
+See [`graphrag_lab-mcp/README.md`](graphrag_lab-mcp/README.md) for full
 configuration.
 
 ## Demo: coherence and disputes
@@ -147,7 +147,7 @@ uv run python eval/run_eval.py
 # Against a different backend/tenant
 uv run python eval/run_eval.py \
   --base-url http://localhost:8000 \
-  --tenant-id contextstore_demo
+  --tenant-id graphrag_lab_demo
 ```
 
 Reports are written to `eval/reports/`. See [`eval/README.md`](eval/README.md)

@@ -8,7 +8,7 @@
 # the application source -- no uv, no build tools, no secrets.
 #
 # Build context is the REPO ROOT (so it can see pyproject.toml / uv.lock / src):
-#   docker build -f deploy/Dockerfile -t contextstore-backend .
+#   docker build -f deploy/Dockerfile -t graphrag_lab-backend .
 
 # ---- Builder: install deps + project into a venv via uv -----------------------
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
@@ -54,4 +54,4 @@ USER app
 EXPOSE 8000
 
 # No --reload in production. Bind to all interfaces so Fly's proxy can reach it.
-CMD ["uvicorn", "contextstore.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "graphrag_lab.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

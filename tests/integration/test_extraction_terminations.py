@@ -12,8 +12,8 @@ clean and reusable.
 
 import pytest
 
-from contextstore.extraction.extractor import extract
-from contextstore.extraction.schemas import ExtractedRelation
+from graphrag_lab.extraction.extractor import extract
+from graphrag_lab.extraction.schemas import ExtractedRelation
 
 
 async def _extract_or_skip(content: str) -> list[ExtractedRelation]:

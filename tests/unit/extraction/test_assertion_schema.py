@@ -8,10 +8,10 @@ Stage 2 is what will consume them).
 
 from uuid import uuid4
 
-from contextstore.extraction.schemas import ExtractedRelation
-from contextstore.models.relation import Relation
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
+from graphrag_lab.extraction.schemas import ExtractedRelation
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
 
 SCOPE = Scope.from_dict({"tenant_id": "acme"})
 

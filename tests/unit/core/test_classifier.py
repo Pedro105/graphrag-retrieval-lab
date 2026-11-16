@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from contextstore.core.classifier import (
+from graphrag_lab.core.classifier import (
     CONFIDENCE_THRESHOLD,
     HeuristicClassifier,
     QueryClassifier,

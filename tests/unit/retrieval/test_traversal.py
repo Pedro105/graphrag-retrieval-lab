@@ -8,11 +8,11 @@ cap, and natural termination.
 
 from uuid import UUID, uuid4
 
-from contextstore.models.entity import Entity
-from contextstore.models.provenance import Provenance
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
-from contextstore.retrieval.traversal import breadth_first_traverse
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.retrieval.traversal import breadth_first_traverse
 
 SCOPE = Scope.from_dict({"tenant_id": "acme"})
 PROVENANCE = Provenance(source="test")

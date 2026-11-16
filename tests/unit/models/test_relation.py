@@ -3,9 +3,9 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from contextstore.models.provenance import Provenance
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
 
 
 def make_relation(**overrides) -> Relation:

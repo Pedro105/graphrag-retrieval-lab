@@ -5,7 +5,7 @@
 # Therapeutics/biotech, Cascade/open-source ML, Solstice Motors/EV supply
 # chain), each with an engineered 2-hop-only chain (documented in that
 # script's module docstring) and multi-source provenance. This replaces the
-# old 5-case Acme Corp/Globex/Product Y set (that tenant, contextstore_demo,
+# old 5-case Acme Corp/Globex/Product Y set (that tenant, demo,
 # isn't part of this graph) -- see git history if you need the old cases.
 #
 # Each case:

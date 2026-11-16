@@ -14,12 +14,12 @@ import uuid
 import pytest
 from falkordb.asyncio import FalkorDB
 
-from contextstore.core.config import get_settings
-from contextstore.graph.falkordb_store import FalkorDBGraphStore
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
-from contextstore.core.service import remember
-from contextstore.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.core.config import get_settings
+from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.core.service import remember
+from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
 
 
 def _falkordb_env() -> tuple[str, int]:
@@ -184,7 +184,7 @@ def _describe(by_id: dict, relations: list[Relation]) -> str:
 
 
 def _prov(source: str = "test"):
-    from contextstore.models.provenance import Provenance
+    from graphrag_lab.models.provenance import Provenance
 
     return Provenance(source=source)
 

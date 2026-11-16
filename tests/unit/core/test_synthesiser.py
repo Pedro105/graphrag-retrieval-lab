@@ -10,17 +10,17 @@ graceful degradation when synthesis raises inside recall().
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
-from contextstore.core.service import recall
-from contextstore.core.synthesiser import RecallSynthesiser, serialise_subgraph
-from contextstore.graph.store import GraphStore
-from contextstore.models.claim import apply_claim
-from contextstore.models.entity import Entity
-from contextstore.models.provenance import Provenance
-from contextstore.models.recall import RecallResult, RetrievalStats
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
-from contextstore.models.synthesis import SynthesisResult
-from contextstore.vector.embeddings import EmbeddingProvider
+from graphrag_lab.core.service import recall
+from graphrag_lab.core.synthesiser import RecallSynthesiser, serialise_subgraph
+from graphrag_lab.graph.store import GraphStore
+from graphrag_lab.models.claim import apply_claim
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.recall import RecallResult, RetrievalStats
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.models.synthesis import SynthesisResult
+from graphrag_lab.vector.embeddings import EmbeddingProvider
 
 SCOPE = Scope.from_dict({"tenant_id": "acme", "user_id": "u_1"})
 PROVENANCE = Provenance(source="agent_1")

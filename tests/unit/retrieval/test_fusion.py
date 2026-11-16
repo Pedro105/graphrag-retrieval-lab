@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from contextstore.retrieval.fusion import reciprocal_rank_fusion
+from graphrag_lab.retrieval.fusion import reciprocal_rank_fusion
 
 ENTITY_A = uuid4()
 ENTITY_B = uuid4()

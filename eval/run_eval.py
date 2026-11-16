@@ -398,7 +398,7 @@ def write_report(
     overall_hits = sum(row["hit"] for row in results)
 
     lines = [
-        f"# ContextStore recall eval -- {timestamp}",
+        f"# Recall eval -- {timestamp}",
         "",
         f"- base_url: `{base_url}`",
         f"- tenant_id: `{tenant_id}`",
@@ -468,7 +468,7 @@ def write_report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the ContextStore recall eval harness.")
+    parser = argparse.ArgumentParser(description="Run the recall eval harness.")
     parser.add_argument(
         "--base-url",
         default="http://localhost:8000",

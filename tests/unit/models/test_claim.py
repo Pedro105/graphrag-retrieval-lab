@@ -1,5 +1,5 @@
-from contextstore.models.claim import apply_claim, derive_active_view
-from contextstore.models.provenance import Provenance
+from graphrag_lab.models.claim import apply_claim, derive_active_view
+from graphrag_lab.models.provenance import Provenance
 
 
 def test_no_properties_records_a_single_touch_claim():

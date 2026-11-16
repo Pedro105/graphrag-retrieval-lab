@@ -15,11 +15,11 @@ import os
 import pytest
 from falkordb.asyncio import FalkorDB
 
-from contextstore.core.config import get_settings
-from contextstore.core.service import recall
-from contextstore.graph.falkordb_store import FalkorDBGraphStore
-from contextstore.models.scope import Scope
-from contextstore.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.core.config import get_settings
+from graphrag_lab.core.service import recall
+from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
 
 TENANT_ID = "eval_test"
 

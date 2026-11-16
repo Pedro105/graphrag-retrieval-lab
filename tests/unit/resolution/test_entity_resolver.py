@@ -4,14 +4,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from contextstore.extraction.schemas import ExtractedEntity
-from contextstore.graph.store import GraphStore
-from contextstore.models.claim import apply_claim, derive_active_view
-from contextstore.models.entity import Entity
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
-from contextstore.resolution.entity_resolver import resolve_entity
-from contextstore.vector.embeddings import EmbeddingProvider
+from graphrag_lab.extraction.schemas import ExtractedEntity
+from graphrag_lab.graph.store import GraphStore
+from graphrag_lab.models.claim import apply_claim, derive_active_view
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.resolution.entity_resolver import resolve_entity
+from graphrag_lab.vector.embeddings import EmbeddingProvider
 
 SCOPE = Scope.from_dict({"tenant_id": "acme", "user_id": "u_1"})
 PROVENANCE = Provenance(source="agent_1")

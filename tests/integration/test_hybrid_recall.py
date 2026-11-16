@@ -19,13 +19,13 @@ import uuid
 import pytest
 from falkordb.asyncio import FalkorDB
 
-from contextstore.core.service import recall
-from contextstore.graph.falkordb_store import FalkorDBGraphStore
-from contextstore.models.entity import Entity
-from contextstore.models.memory import Memory
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
-from contextstore.vector.embeddings import EmbeddingProvider
+from graphrag_lab.core.service import recall
+from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.memory import Memory
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.vector.embeddings import EmbeddingProvider
 
 QUERY_EMBEDDING = [1.0, 0.0, 0.0, 0.0]
 

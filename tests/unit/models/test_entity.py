@@ -3,9 +3,9 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from contextstore.models.entity import Entity
-from contextstore.models.provenance import Provenance
-from contextstore.models.scope import Scope
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.scope import Scope
 
 
 def make_entity(**overrides) -> Entity:

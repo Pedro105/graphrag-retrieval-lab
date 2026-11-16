@@ -7,13 +7,13 @@ tight enough that seeds alone would exceed it.
 
 from unittest.mock import AsyncMock
 
-from contextstore.core.service import recall
-from contextstore.graph.store import GraphStore
-from contextstore.models.entity import Entity
-from contextstore.models.provenance import Provenance
-from contextstore.models.relation import Relation
-from contextstore.models.scope import Scope
-from contextstore.vector.embeddings import EmbeddingProvider
+from graphrag_lab.core.service import recall
+from graphrag_lab.graph.store import GraphStore
+from graphrag_lab.models.entity import Entity
+from graphrag_lab.models.provenance import Provenance
+from graphrag_lab.models.relation import Relation
+from graphrag_lab.models.scope import Scope
+from graphrag_lab.vector.embeddings import EmbeddingProvider
 
 SCOPE = Scope.from_dict({"tenant_id": "acme", "user_id": "u_1"})
 PROVENANCE = Provenance(source="agent_1")
