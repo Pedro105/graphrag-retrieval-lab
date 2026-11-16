@@ -15,7 +15,7 @@ by an LLM and is therefore noisy?** See the [research plan](docs/research-plan.m
 | Milestone | State |
 |---|---|
 | 1. Cleanup: compose stack, CI, cached LLM client | Done |
-| 2. Neo4j port + benchmark harness with baselines (2WikiMultiHopQA) | Next |
+| 2. Neo4j port + benchmark harness with baselines (2WikiMultiHopQA) | In progress: local embeddings and Neo4j done |
 | 3. Learned GNN retriever (PyTorch Geometric) | Planned |
 | 4. Robustness study under controlled graph noise | Planned |
 | 5. Conflicting / evolving knowledge benchmark | Stretch |
@@ -28,7 +28,7 @@ flowchart LR
     T[Text + source] --> X[LLM extraction]
     X --> R[Entity resolution]
     R --> A[Claim adjudication]
-    A --> G[(FalkorDB)]
+    A --> G[(Neo4j)]
     Q[Question] --> C[Query classifier]
     C --> S[Seed: vector / full-text / RRF]
     G --> S
@@ -64,7 +64,7 @@ text needs an Anthropic key for extraction; embeddings run locally
 ```bash
 make install                 # uv sync
 cp .env.example .env         # add ANTHROPIC_API_KEY
-make up                      # FalkorDB on :6379, graph browser on :3000
+make up                      # Neo4j on :7687, browser on :7474
 make api                     # API on :8000 (or: docker compose up -d)
 ```
 
@@ -95,7 +95,8 @@ make populate && make eval   # synthetic 3-cluster graph + recall smoke eval
 ```
 
 CI runs the lint, type and unit job, and the integration suite against a
-FalkorDB service container.
+Neo4j service container, including an end-to-end pipeline test that uses
+the real embedding model with stubbed extraction, so it needs no API key.
 
 ## Repository layout
 
@@ -106,11 +107,11 @@ src/graphrag_lab/
   extraction/   extraction prompt, schemas, call
   resolution/   entity resolution, claim adjudication
   retrieval/    rank fusion, BFS traversal
-  graph/        GraphStore interface + FalkorDB implementation (all Cypher)
+  graph/        GraphStore interface + Neo4j implementation (all Cypher)
   vector/       embedding providers
   llm/          cached structured LLM client
   models/       pydantic contracts between modules
-tests/          unit (offline) and integration (live FalkorDB) suites
+tests/          unit (offline) and integration (live Neo4j) suites
 eval/           recall smoke eval over a synthetic graph
 docs/           architecture, research plan, ADRs
 ```

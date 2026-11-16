@@ -1,87 +1,133 @@
-"""Cypher for the reified-claim model, kept out of falkordb_store.py so the
-store reads as orchestration over named queries.
+"""Cypher for the reified-claim model on Neo4j.
 
-Reification means the predicate is a `:Claim` node *property*, not the Cypher
-edge type -- the only edge types are the fixed `:SUBJECT` / `:OBJECT`, so none
-of these need a relation type inlined into the string (unlike the old direct-edge
-writes). They are all fully parameterized.
+Every node carries its type label (`:Entity` / `:Claim`) plus a per-tenant
+label (`:Tenant_<id>`, see ADR 0004). Queries are written against the
+placeholder `__T__`, which `neo4j_store.tenant_query` replaces with the
+validated tenant label -- labels and index names cannot be Cypher
+parameters. Everything else is parameterized.
+
+Facts are reified: the predicate is a `:Claim` property, and the only
+relationship types are the fixed `:SUBJECT` / `:OBJECT`.
 """
 
-# Upsert a claim node by id (create-or-update: status transitions reuse this),
-# then ensure its structural edges to subject/object exist. MERGE on {id} only,
-# SET the rest -- same shape as the entity write. The edge MERGEs are idempotent,
-# so re-upserting an existing claim does not duplicate them.
+# --- schema (global, created once) -------------------------------------------
+
+CONSTRAINTS = (
+    "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (n:Entity) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT claim_id IF NOT EXISTS FOR (c:Claim) REQUIRE c.id IS UNIQUE",
+)
+
+# --- writes ------------------------------------------------------------------
+
+UPSERT_ENTITY = """
+MERGE (n:Entity {id: $id})
+SET n:__T__, n += $props
+"""
+
+SET_ENTITY_EMBEDDING = """
+MATCH (n:Entity:__T__ {id: $id})
+CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
+"""
+
+# Create-or-update a claim by id (status transitions reuse this) and ensure its
+# structural edges exist. MERGE on the edges keeps re-upserts idempotent.
 UPSERT_CLAIM = """
 MERGE (c:Claim {id: $id})
-SET c += $props
+SET c:__T__, c += $props
 WITH c
-MATCH (s:Entity {id: $subject_id})
-MATCH (o:Entity {id: $object_id})
+MATCH (s:Entity:__T__ {id: $subject_id})
+MATCH (o:Entity:__T__ {id: $object_id})
 MERGE (c)-[:SUBJECT]->(s)
 MERGE (c)-[:OBJECT]->(o)
 """
 
-# Candidate conflicting/corroborating claims: same subject, same normalized
-# predicate, currently active. (Disputed claims are not re-adjudicated here.)
+# --- claim reads -------------------------------------------------------------
+
+# Conflict/corroboration candidates: same subject and normalized predicate,
+# currently active. Disputed claims are not re-adjudicated.
 FIND_ACTIVE_CLAIMS = """
-MATCH (c:Claim)-[:SUBJECT]->(:Entity {id: $subject_id})
+MATCH (c:Claim:__T__)-[:SUBJECT]->(:Entity {id: $subject_id})
 WHERE c.status = 'active' AND c.predicate = $predicate
 RETURN c
 """
 
-# Collapse projection: every live (active or disputed) claim as a subject->object
-# pair. The single source of display edges for both GET /v1/graph and recall.
+# Every live (active or disputed) claim: the single source of display edges.
 PROJECT_LIVE_CLAIMS = """
-MATCH (c:Claim)-[:SUBJECT]->(s:Entity)
-MATCH (c)-[:OBJECT]->(o:Entity)
+MATCH (c:Claim:__T__)
 WHERE c.status IN ['active', 'disputed']
-RETURN c, s.id, o.id
+RETURN c
 """
 
-# One BFS hop through live claims, treating a claim as a logical edge between its
-# two entities. Both directions are reachable (claims are matched from either
-# endpoint); n.id <> e.id drops the degenerate same-endpoint binding.
-FETCH_CLAIM_NEIGHBOURS = """
-MATCH (e:Entity)<-[:SUBJECT|OBJECT]-(c:Claim)-[:SUBJECT|OBJECT]->(n:Entity)
-WHERE e.id IN $frontier_ids AND c.status IN ['active', 'disputed'] AND n.id <> e.id
-RETURN DISTINCT n, c
-"""
-
-# Distinct predicates in a tenant's live graph -- biases extraction toward
-# reusing an existing relation vocabulary (replaces the old traverse-based scan).
 DISTINCT_PREDICATES = """
-MATCH (c:Claim)
+MATCH (c:Claim:__T__)
 WHERE c.status IN ['active', 'disputed']
 RETURN DISTINCT c.raw_predicate AS predicate
 """
 
-# Live claims incident to a set of entities, for the claim-aware traverse()
-# (graph snapshot).
-CLAIMS_INCIDENT_TO = """
-MATCH (c:Claim)-[:SUBJECT]->(s:Entity)
-MATCH (c)-[:OBJECT]->(o:Entity)
-WHERE (s.id IN $entity_ids OR o.id IN $entity_ids) AND c.status IN ['active', 'disputed']
-RETURN c, s.id, o.id
+DISPUTED_CLAIMS = "MATCH (c:Claim:__T__) WHERE c.status = 'disputed' RETURN c"
+
+# --- entity reads ------------------------------------------------------------
+
+GET_ENTITY = "MATCH (n:Entity:__T__ {id: $id}) RETURN n LIMIT 1"
+
+GET_ENTITIES = "MATCH (n:Entity:__T__) WHERE n.id IN $ids RETURN n"
+
+FIND_ENTITIES = """
+MATCH (n:Entity:__T__)
+WHERE ($name IS NULL OR n.name = $name)
+  AND ($entity_type IS NULL OR n.entity_type = $entity_type)
+RETURN n
 """
 
-# Delete the claims incident to an entity along with the entity (entity delete
-# must not leave orphaned :Claim nodes behind).
+# Cypher 25 SEARCH over the tenant's vector index (index names, like labels,
+# cannot be parameters: `__VINDEX__` is substituted after validation). Neo4j
+# reports cosine as (1 + cos) / 2 in [0, 1]; the store converts back.
+VECTOR_SEARCH = """
+CYPHER 25
+MATCH (node:__T__)
+SEARCH node IN (VECTOR INDEX __VINDEX__ FOR $embedding LIMIT $k) SCORE AS score
+RETURN node, score
+ORDER BY score DESC
+"""
+
+FULLTEXT_SEARCH = """
+CALL db.index.fulltext.queryNodes($index, $q, {limit: $limit}) YIELD node, score
+RETURN node, score
+ORDER BY score DESC
+"""
+
+# One BFS hop through live claims, a claim acting as an undirected logical edge
+# between its two entities. Already-visited neighbours are returned on purpose
+# so edges between known entities reach the result (see retrieval/traversal.py).
+FETCH_CLAIM_NEIGHBOURS = """
+MATCH (e:Entity:__T__)<-[:SUBJECT|OBJECT]-(c:Claim:__T__)-[:SUBJECT|OBJECT]->(n:Entity:__T__)
+WHERE e.id IN $frontier_ids AND c.status IN ['active', 'disputed'] AND n.id <> e.id
+RETURN DISTINCT n, c
+"""
+
+# --- deletes and stats -------------------------------------------------------
+
+# Deleting an entity also deletes its incident claims, never leaving orphans.
 DELETE_ENTITY_WITH_CLAIMS = """
-MATCH (n:Entity {id: $id})
+MATCH (n:Entity:__T__ {id: $id})
 OPTIONAL MATCH (c:Claim)-[:SUBJECT|OBJECT]->(n)
 DETACH DELETE c, n
 """
 
-# Same, but for every entity written by a given memory.
 DELETE_MEMORY_WITH_CLAIMS = """
-MATCH (n:Entity {memory_id: $memory_id})
+MATCH (n:Entity:__T__ {memory_id: $memory_id})
 OPTIONAL MATCH (c:Claim)-[:SUBJECT|OBJECT]->(n)
 DETACH DELETE c, n
 """
 
-# Count entities and live claims in a tenant's graph.
-COUNT_ENTITIES = "MATCH (n:Entity) RETURN count(n)"
-COUNT_LIVE_CLAIMS = "MATCH (c:Claim) WHERE c.status IN ['active', 'disputed'] RETURN count(c)"
+DELETE_TENANT_BATCH = """
+MATCH (n:__T__)
+WITH n LIMIT $batch
+DETACH DELETE n
+RETURN count(*) AS deleted
+"""
 
-# Disputed claims -- unresolved cross-asserter conflicts, for /v1/conflicts.
-DISPUTED_CLAIMS = "MATCH (c:Claim) WHERE c.status = 'disputed' RETURN c"
+COUNT_ENTITIES = "MATCH (n:Entity:__T__) RETURN count(n) AS count"
+COUNT_LIVE_CLAIMS = (
+    "MATCH (c:Claim:__T__) WHERE c.status IN ['active', 'disputed'] RETURN count(c) AS count"
+)

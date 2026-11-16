@@ -75,11 +75,11 @@ flowchart LR
 ```
 
 Reifying facts as nodes lets status, validity and provenance live on the
-fact itself instead of on a single edge (see
-[ADR 0002](decisions/0002-graph-per-tenant-isolation.md) for isolation and
-[ADR 0001](decisions/0001-falkordb-native-vector-index.md) for the vector
-index). Each `tenant_id` is a separate FalkorDB graph, used to keep corpora
-and experiments apart.
+fact itself instead of on a single edge. The store is Neo4j
+([ADR 0004](decisions/0004-neo4j-with-label-per-tenant.md)). Each `tenant_id` (used to keep corpora and experiment runs
+apart) is a `:Tenant_<id>` label on every node it owns, with its own vector
+and full-text index, so searches never rank another tenant's entities. Lists
+and timestamps are native Neo4j properties; nested maps are JSON strings.
 
 ## LLM calls
 
@@ -99,7 +99,7 @@ Embeddings come from a local sentence-transformers model
 | `extraction/` | Prompt, schemas and the extraction call |
 | `resolution/` | Entity resolution and claim adjudication |
 | `retrieval/` | Rank fusion and BFS traversal |
-| `graph/` | `GraphStore` interface and the FalkorDB implementation; all Cypher lives here |
+| `graph/` | `GraphStore` interface and the Neo4j implementation; all Cypher lives here |
 | `vector/` | Embedding providers |
 | `llm/` | Cached structured LLM client |
 | `models/` | Pydantic contracts shared across modules |
@@ -118,7 +118,7 @@ These are the motivation for the research plan rather than bugs to patch:
   hand-set, not learned or measured.
 - The existing eval (`eval/`) is an 11-case smoke test on a small synthetic
   graph; it cannot show whether the graph helps.
-- Non-tenant scope keys and entity properties are stored as JSON strings,
+- Non-tenant scope keys and free-form entity properties are JSON strings,
   so they cannot be filtered in Cypher.
 - Claim upserts are read-modify-write without a transaction, so concurrent
   writers can race.

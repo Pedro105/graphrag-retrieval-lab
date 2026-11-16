@@ -24,7 +24,7 @@ class Relation(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
     contributing_sources: list[str] = Field(default_factory=list)
     # Coherence state, set when this Relation is a display edge collapsed from a
-    # FactClaim (see graph/falkordb_store.py's projection). "active" for an
+    # FactClaim (see graph/schema.py's claim_to_relation). "active" for an
     # undisputed current fact; "disputed" when live claims from different
     # asserters conflict. `disputed_with` lists the conflicting claim ids.
     # Defaults keep plain (write-time) Relations unaffected.

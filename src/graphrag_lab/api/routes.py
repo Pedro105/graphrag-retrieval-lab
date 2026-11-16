@@ -2,7 +2,7 @@
 
 There is no authentication: this is a local research service. Every request
 names the graph it operates on via `tenant_id` (default "default"); each
-tenant is a structurally separate FalkorDB graph (see docs/decisions/0002).
+tenant is structurally separate in Neo4j (see docs/decisions/0004).
 Callers may add other scope keys (user_id, project, ...) via `extra_scope`,
 used for in-graph filtering (Scope.includes).
 """

@@ -33,7 +33,7 @@ Categories: `exact_term`, `single_hop`, `bridging`, `provenance`, `isolation`.
 ## Running
 
 ```bash
-make up && make api          # FalkorDB + API, with API keys in .env
+make up && make api          # Neo4j + API, with ANTHROPIC_API_KEY in .env
 make populate                # ingest the synthetic graph (LLM calls are cached)
 make eval                    # or: uv run python eval/run_eval.py --help
 ```
@@ -50,5 +50,6 @@ report in `eval/reports/` (gitignored).
   prompt can rename properties; if a case fails only on a property or
   relation *name*, inspect `GET /v1/graph?tenant_id=eval_test` before
   assuming a regression.
-- Some cases pin `limit` because FalkorDB's HNSW index under-returns for
-  small `k` on tiny graphs.
+- Some cases pin `limit`: they were tuned when approximate (HNSW) vector
+  search under-returned for small `k` on this tiny graph. Re-check them on
+  Neo4j before relying on them.

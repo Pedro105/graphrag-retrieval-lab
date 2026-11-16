@@ -1,17 +1,13 @@
-"""Integration tests for FalkorDBGraphStore, run against a real FalkorDB instance.
+"""Integration tests for Neo4jGraphStore against a real Neo4j instance.
 
-Skips rather than fails if FalkorDB isn't reachable. Each test gets a fresh,
-randomly-named tenant (and therefore a fresh FalkorDB graph), cleaned up in
-teardown, so tests don't interfere with each other or leave state behind.
+Each test gets a fresh, randomly named tenant (its own label and indexes),
+dropped in teardown, so tests don't interfere or leave state behind.
 """
 
-import os
 import uuid
 
 import pytest
-from falkordb.asyncio import FalkorDB
 
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.entity import Entity
 from graphrag_lab.models.fact_claim import FactClaim
 from graphrag_lab.models.memory import Memory
@@ -32,35 +28,6 @@ def make_claim(scope, subject_id, object_id, **overrides) -> FactClaim:
     )
     defaults.update(overrides)
     return FactClaim(**defaults)
-
-
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    graph_store = FalkorDBGraphStore(host=host, port=port)
-    yield graph_store
-    await graph_store.aclose()
-
-
-@pytest.fixture
-async def tenant_id(store):
-    tid = f"test{uuid.uuid4().hex[:16]}"
-    yield tid
-    graph_name = f"tenant_{tid}"
-    if graph_name in await store._client.list_graphs():
-        await store._client.select_graph(graph_name).delete()
 
 
 def make_scope(tenant_id: str, **kv: str) -> Scope:
@@ -240,9 +207,7 @@ async def test_tenant_isolation_is_structural(store, tenant_id):
         assert [e.id for e in await store.find_entities(scope_a)] == [pedro_a.id]
         assert [e.id for e in await store.find_entities(scope_b)] == [pedro_b.id]
     finally:
-        other_graph_name = f"tenant_{other_tenant_id}"
-        if other_graph_name in await store._client.list_graphs():
-            await store._client.select_graph(other_graph_name).delete()
+        await store.drop_graph(other_tenant_id)
 
 
 async def test_find_similar_entities_returns_empty_for_uninitialized_tenant(store, tenant_id):

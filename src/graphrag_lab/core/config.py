@@ -17,9 +17,11 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
-    falkordb_host: str = "localhost"
-    falkordb_port: int = 6379
-    falkordb_password: SecretStr | None = None
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    # Local development default, matching docker-compose.yml.
+    neo4j_password: SecretStr = SecretStr("graphrag-lab-dev")
+    neo4j_database: str = "neo4j"
 
     # Optional: fully cached runs need no Anthropic key, and the default
     # local embeddings need no OpenAI key. Missing keys fail at first use.

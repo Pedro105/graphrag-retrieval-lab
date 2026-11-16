@@ -1,53 +1,20 @@
 """The multi-agent coherence checks: adjudication end to end with real extraction.
 
 Five named scenarios, end to end through the real write path (real Claude
-extraction + real OpenAI embeddings + real FalkorDB), asserting the reified-claim
-adjudicator's behaviour. Skips rather than fails when FalkorDB or the LLM/
+extraction + local embeddings + real Neo4j), asserting the reified-claim
+adjudicator's behaviour. Skips rather than fails when Neo4j or the LLM/
 embedding APIs aren't available -- same pattern as the other integration tests.
 
 These are the seed of the public coherence benchmark; keep them clean and named.
 """
 
-import os
-import uuid
-
 import pytest
-from falkordb.asyncio import FalkorDB
 
 from graphrag_lab.core.config import get_settings
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.relation import Relation
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.core.service import remember
 from graphrag_lab.vector.embeddings import build_embedding_provider
-
-
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-    graph_store = FalkorDBGraphStore(host=host, port=port)
-    yield graph_store
-    await graph_store.aclose()
-
-
-@pytest.fixture
-async def tenant_id(store):
-    tid = f"coh{uuid.uuid4().hex[:16]}"
-    yield tid
-    graph_name = f"tenant_{tid}"
-    if graph_name in await store._client.list_graphs():
-        await store._client.select_graph(graph_name).delete()
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
 """Integration test for the classifier wired into the recall path, against a
-real FalkorDB instance. Skips gracefully if FalkorDB isn't reachable.
+real Neo4j instance.
 
 No real LLM/embedding calls: a FakeEmbeddingProvider returns a fixed vector,
 and the three queries are deliberately ones the heuristic classifies with
@@ -8,14 +8,11 @@ assertions are on how each query was *routed* (classifier_result), which the
 recall path now attaches to the response.
 """
 
-import os
 import uuid
 
 import pytest
-from falkordb.asyncio import FalkorDB
 
 from graphrag_lab.core.service import recall
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.entity import Entity
 from graphrag_lab.models.memory import Memory
 from graphrag_lab.models.provenance import Provenance
@@ -26,31 +23,15 @@ QUERY_EMBEDDING = [1.0, 0.0, 0.0, 0.0]
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
+    @property
+    def dimension(self) -> int:
+        return len(QUERY_EMBEDDING)
+
     async def embed(self, text: str) -> list[float]:
         return QUERY_EMBEDDING
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         return [QUERY_EMBEDDING for _ in texts]
-
-
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    graph_store = FalkorDBGraphStore(host=host, port=port)
-    yield graph_store
-    await graph_store.aclose()
 
 
 @pytest.fixture
@@ -70,9 +51,7 @@ async def scope(store):
         Memory(content="seed", entities=[entity], scope=s, provenance=provenance)
     )
     yield s
-    graph_name = f"tenant_{tid}"
-    if graph_name in await store._client.list_graphs():
-        await store._client.select_graph(graph_name).delete()
+    await store.drop_graph(tid)
 
 
 async def test_exact_lookup_query_is_routed_to_fulltext_depth1(store, scope):

@@ -4,54 +4,20 @@ via two separate remember() calls produced two edges instead of one.
 
 Relations are now deduplicated at write time via MERGE keyed on
 (source_entity_id, target_entity_id, relation_type) -- see
-graph/falkordb_store.py's module docstring. This test encodes the exact
+resolution/conflict_resolver.py. This test encodes the exact
 scenario: two independently-phrased sentences that each state the same
 fact about the same two entities.
 
-Uses real Claude (extraction) + real OpenAI (embeddings) + real FalkorDB,
+Uses real Claude (extraction) + local embeddings + real Neo4j,
 same "attempt and skip on failure" pattern as the other E2E tests.
 """
 
-import os
-import uuid
-
 import pytest
-from falkordb.asyncio import FalkorDB
 
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.core.service import remember
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.vector.embeddings import build_embedding_provider
-
-
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def graph_store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    store = FalkorDBGraphStore(host=host, port=port)
-    yield store
-    await store.aclose()
-
-
-@pytest.fixture
-async def tenant_id(graph_store):
-    tid = f"dedup{uuid.uuid4().hex[:16]}"
-    yield tid
-    graph_name = f"tenant_{tid}"
-    if graph_name in await graph_store._client.list_graphs():
-        await graph_store._client.select_graph(graph_name).delete()
 
 
 async def test_repeated_relation_between_same_entities_merges_not_duplicates(

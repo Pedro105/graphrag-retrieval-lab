@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Superseded by [4](0004-neo4j-with-label-per-tenant.md).
 
 ## Context
 

@@ -4,7 +4,7 @@ rather than dropping them (the root cause of facts never being superseded).
 These call real Claude (Haiku) via Instructor and skip gracefully when the API
 isn't configured/reachable -- the same "attempt and skip on failure" pattern as
 the other integration tests. They assert on `assertion_type`, the extraction
-field; they do NOT touch FalkorDB (extraction is a pure LLM call).
+field; they do NOT touch the graph store (extraction is a pure LLM call).
 
 Named scenarios -- these are the seed of the coherence benchmark, so keep them
 clean and reusable.

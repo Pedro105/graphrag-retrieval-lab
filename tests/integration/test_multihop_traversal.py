@@ -3,19 +3,23 @@ eval_test graph (the 3 engineered 2-hop chains from scripts/populate_graph.py).
 
 Each chain's end entity C must be ABSENT at depth=1 and PRESENT at depth=2 --
 the same falsifiability the eval harness checks, exercised here directly
-against the store. Skips gracefully if FalkorDB isn't reachable or eval_test
-hasn't been seeded.
+against the store. Skips if Neo4j isn't reachable or eval_test hasn't been seeded.
 """
 
-import os
-
 import pytest
-from falkordb.asyncio import FalkorDB
 
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.graph.store import GraphStore
 from graphrag_lab.models.scope import Scope
 
 TENANT_ID = "eval_test"
+
+
+@pytest.fixture(autouse=True)
+async def _require_seeded_graph(store):
+    entity_count, _ = await store.graph_stats(TENANT_ID)
+    if entity_count == 0:
+        pytest.skip(f"{TENANT_ID} graph not seeded; run `make populate`")
+
 
 # (seed entity name, bridge-target entity name) for each engineered chain.
 CHAINS = [
@@ -25,30 +29,7 @@ CHAINS = [
 ]
 
 
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    graph_store = FalkorDBGraphStore(host=host, port=port)
-    if f"tenant_{TENANT_ID}" not in await graph_store._client.list_graphs():
-        await graph_store.aclose()
-        pytest.skip(f"tenant_{TENANT_ID} graph not seeded; run scripts/populate_graph.py")
-    yield graph_store
-    await graph_store.aclose()
-
-
-async def _seed_id(store: FalkorDBGraphStore, scope: Scope, name: str) -> str:
+async def _seed_id(store: GraphStore, scope: Scope, name: str) -> str:
     entities = await store.find_entities(scope, name=name)
     if not entities:
         pytest.skip(f"seed entity {name!r} not found in {TENANT_ID}")

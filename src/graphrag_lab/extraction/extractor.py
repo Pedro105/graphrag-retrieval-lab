@@ -11,9 +11,8 @@ def _build_user_message(content: str, existing_relation_types: list[str] | None)
     conceptual fact, rather than inventing a new-but-synonymous string on
     every write.
 
-    Why this exists: relation deduplication (graph/falkordb_store.py) keys
-    on an exact relation_type string match, because Cypher edge types must
-    be inlined rather than parameterized. relation_type is otherwise a free
+    Why this exists: claim adjudication (resolution/conflict_resolver.py)
+    matches facts on an exact normalized predicate. relation_type is otherwise a free
     string (extraction/schemas.py), so nothing previously stopped the model
     from extracting "owns" one call and "relates_to" another for what's
     really an update to the same relationship -- the second write then

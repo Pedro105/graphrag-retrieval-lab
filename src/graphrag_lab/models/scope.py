@@ -7,7 +7,7 @@ from pydantic import RootModel, field_validator
 
 ScopeValue = str | int | float | bool
 
-# tenant_id is used directly as a FalkorDB graph name (a Redis key), so it's
+# tenant_id is embedded in Neo4j label and index names, so it's
 # restricted to a safe slug charset rather than allowing arbitrary strings.
 _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -15,9 +15,9 @@ _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 class Scope(RootModel[dict[str, ScopeValue]]):
     """A key-value mapping that locates a memory in a logical space.
 
-    `tenant_id` is mandatory on every scope: FalkorDB's vector search doesn't
-    combine well with property filters, so tenant isolation is enforced
-    structurally (one FalkorDB graph per tenant) rather than by filtering.
+    `tenant_id` is mandatory on every scope: tenant isolation is enforced
+    structurally (a label and dedicated indexes per tenant, ADR 0004) rather
+    than by filtering a shared vector search.
     All other scope keys (user_id, project, agent_id, ...) are filtered in
     application code after retrieval.
 
@@ -37,7 +37,7 @@ class Scope(RootModel[dict[str, ScopeValue]]):
         if not isinstance(tenant_id, str) or not _SAFE_TENANT_ID.match(tenant_id):
             raise ValueError(
                 f"tenant_id {tenant_id!r} must be a non-empty string matching "
-                "^[A-Za-z0-9_-]+$ (used directly as a FalkorDB graph name)"
+                "^[A-Za-z0-9_-]+$ (it is embedded in Neo4j label and index names)"
             )
         for key in value:
             if not key:

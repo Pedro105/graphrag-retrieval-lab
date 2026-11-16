@@ -16,10 +16,9 @@ class GraphStore(ABC):
     Concrete implementations are confined to `graph/`; callers elsewhere
     interact only through this interface and `models/` types.
 
-    Every tenant gets a structurally separate graph (see
-    `ensure_graph_initialized`), since vector search can't be combined with
-    property filters reliably enough to enforce tenant isolation by
-    filtering alone. `get_entity` and `delete_memory` take `tenant_id`
+    Every tenant is structurally separate, with its own vector and full-text
+    indexes (see `ensure_graph_initialized` and ADR 0004), so a vector search
+    never ranks another tenant's entities. `get_entity` and `delete_memory` take `tenant_id`
     directly (rather than a full `Scope`) because they address a single
     known id and only need to know which graph to look in.
     """
@@ -94,12 +93,10 @@ class GraphStore(ABC):
     ) -> list[tuple[Entity, float]]:
         """Vector search for entities near `embedding` within `scope`'s tenant.
 
-        Returns (entity, similarity) pairs, most similar first, where
-        similarity is in [0, 1] with 1 meaning identical (this is FalkorDB's
-        cosine distance converted to similarity — see falkordb_store.py).
-        Filtered to `entity_type` and `Scope.includes` in Python after the
-        vector search, since FalkorDB vector queries don't combine well
-        with property filters.
+        Returns (entity, cosine similarity) pairs, most similar first, with 1
+        meaning identical. Implementations convert from their database's
+        native score. Filtered to `entity_type` and `Scope.includes` after
+        the tenant-scoped vector search.
         """
 
     @abstractmethod

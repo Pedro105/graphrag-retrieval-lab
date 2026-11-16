@@ -18,7 +18,7 @@
 #   query:               natural-language query sent to /v1/recall
 #   limit:               optional, overrides --limit for this case. Several
 #                        cases below need a specific value because of
-#                        FalkorDB's HNSW index under-returning at small k on
+#                        HNSW vector search under-returning at small k on
 #                        small graphs) -- this is a known small-graph
 #                        artifact, not a retrieval quality issue, so the
 #                        right move is encoding the working limit per case,

@@ -7,8 +7,8 @@ help:  ## Show available targets
 install:  ## Install dependencies (incl. dev) with uv
 	uv sync
 
-up:  ## Start FalkorDB in Docker (browser on :3000)
-	docker compose up -d --wait falkordb
+up:  ## Start Neo4j in Docker (browser on :7474)
+	docker compose up -d --wait neo4j
 
 down:  ## Stop the Docker stack
 	docker compose down

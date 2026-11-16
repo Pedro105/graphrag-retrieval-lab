@@ -1,51 +1,17 @@
 """End-to-end test of the write/read core engine: real Claude (extraction),
-real OpenAI (embeddings), real FalkorDB (graph + vector index).
+local embeddings, real Neo4j (graph + vector index).
 
-Skips gracefully if FalkorDB isn't reachable, or if the real LLM/embedding
+Skips gracefully if Neo4j isn't reachable, or if the real LLM/embedding
 calls fail (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY missing or invalid) --
-same "attempt and skip on failure" pattern as test_falkordb_connection.py.
+an "attempt and skip on failure" pattern.
 """
 
-import os
-import uuid
-
 import pytest
-from falkordb.asyncio import FalkorDB
 
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.core.service import recall, remember
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.vector.embeddings import build_embedding_provider
-
-
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def graph_store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    store = FalkorDBGraphStore(host=host, port=port)
-    yield store
-    await store.aclose()
-
-
-@pytest.fixture
-async def tenant_id(graph_store):
-    tid = f"e2etest{uuid.uuid4().hex[:16]}"
-    yield tid
-    graph_name = f"tenant_{tid}"
-    if graph_name in await graph_store._client.list_graphs():
-        await graph_store._client.select_graph(graph_name).delete()
 
 
 async def test_remember_then_recall_resolves_entities_across_facts(graph_store, tenant_id):

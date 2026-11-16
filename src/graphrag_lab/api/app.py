@@ -9,7 +9,7 @@ from fastapi import FastAPI, Response, status
 
 from graphrag_lab.api.routes import router
 from graphrag_lab.core.config import get_settings
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
+from graphrag_lab.graph.neo4j_store import Neo4jGraphStore
 from graphrag_lab.vector.embeddings import build_embedding_provider
 
 APP_VERSION = "0.2.0"
@@ -35,17 +35,14 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    app.state.graph_store = FalkorDBGraphStore(
-        host=settings.falkordb_host,
-        port=settings.falkordb_port,
-        password=(
-            settings.falkordb_password.get_secret_value() if settings.falkordb_password else None
-        ),
+    app.state.graph_store = Neo4jGraphStore(
+        uri=settings.neo4j_uri,
+        user=settings.neo4j_user,
+        password=settings.neo4j_password.get_secret_value(),
+        database=settings.neo4j_database,
     )
     app.state.embedding_provider = build_embedding_provider(settings)
-    logger.info(
-        "app_startup", falkordb_host=settings.falkordb_host, falkordb_port=settings.falkordb_port
-    )
+    logger.info("app_startup", neo4j_uri=settings.neo4j_uri)
     yield
     await app.state.graph_store.aclose()
     logger.info("app_shutdown")

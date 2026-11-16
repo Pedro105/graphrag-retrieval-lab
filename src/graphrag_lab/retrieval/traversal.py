@@ -2,11 +2,11 @@
 
 The BFS bookkeeping -- frontier expansion hop by hop, visited-id tracking,
 the `max_entities` hard cap, and the end-of-run relation filtering -- lives
-here as a pure async function, decoupled from FalkorDB via two injected
-fetch callables. `graph/falkordb_store.py`'s `traverse_from_seeds` supplies
+here as a pure async function, decoupled from the database via two injected
+fetch callables. `graph/neo4j_store.py`'s `traverse_from_seeds` supplies
 the real Cypher-backed fetchers (one batched query per hop); tests supply
 in-memory ones. Keeping the algorithm out of the store is what makes it
-unit-testable without a live FalkorDB, and keeps the store responsible only
+unit-testable without a live database, and keeps the store responsible only
 for Cypher.
 
 Traversal is undirected (matches the existing one-hop `traverse`): a

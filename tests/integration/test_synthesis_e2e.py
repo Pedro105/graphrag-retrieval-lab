@@ -5,46 +5,26 @@ relational (2-hop) query and asserts each produces a non-empty, non-empty-data
 prose answer. For the relational case, asserts at least one of the engineered
 2-hop chain entities appears in grounded_entity_ids.
 
-Skips gracefully if FalkorDB isn't reachable, eval_test hasn't been seeded, or
+Skips gracefully if Neo4j isn't reachable, eval_test hasn't been seeded, or
 the real LLM/embedding calls fail (missing/invalid API keys) -- same pattern as
 test_remember_recall_e2e.py and test_multihop_traversal.py.
 """
 
-import os
-
 import pytest
-from falkordb.asyncio import FalkorDB
 
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.core.service import recall
-from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.vector.embeddings import build_embedding_provider
 
 TENANT_ID = "eval_test"
 
 
-def _falkordb_env() -> tuple[str, int]:
-    return os.getenv("FALKORDB_HOST", "localhost"), int(os.getenv("FALKORDB_PORT", "6379"))
-
-
-@pytest.fixture
-async def graph_store():
-    host, port = _falkordb_env()
-    probe = FalkorDB(host=host, port=port)
-    try:
-        await probe.connection.ping()
-    except Exception as exc:
-        pytest.skip(f"FalkorDB not reachable at {host}:{port}: {exc}")
-    finally:
-        await probe.connection.aclose()
-
-    store = FalkorDBGraphStore(host=host, port=port)
-    if f"tenant_{TENANT_ID}" not in await store._client.list_graphs():
-        await store.aclose()
-        pytest.skip(f"tenant_{TENANT_ID} graph not seeded; run scripts/populate_graph.py")
-    yield store
-    await store.aclose()
+@pytest.fixture(autouse=True)
+async def _require_seeded_graph(store):
+    entity_count, _ = await store.graph_stats(TENANT_ID)
+    if entity_count == 0:
+        pytest.skip(f"{TENANT_ID} graph not seeded; run `make populate`")
 
 
 @pytest.fixture
