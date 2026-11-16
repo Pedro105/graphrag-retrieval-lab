@@ -1,9 +1,6 @@
-"""Stage 1 unit coverage: the assertion-semantics fields on ExtractedRelation.
-
-These tests need no API key -- they pin the schema contract (defaults,
-backward compatibility) and prove the new fields pass through the write path
-harmlessly (core/service.py still ignores them when building a Relation, since
-Stage 2 is what will consume them).
+"""The assertion-semantics fields on ExtractedRelation: schema defaults,
+backward compatibility, and that they stay off the display Relation model
+(they feed claim adjudication instead). No API key needed.
 """
 
 from uuid import uuid4
@@ -57,9 +54,8 @@ def test_replaces_hint_carries_through():
 
 
 def test_new_fields_do_not_leak_into_the_relation_model():
-    """The write path is unchanged in Stage 1: assertion semantics are not yet
-    carried onto the persisted Relation. This guards against accidentally
-    wiring them in before Stage 2's adjudication is designed."""
+    """Assertion semantics live on claims (via ClaimAssertion), not on the
+    display Relation model built in core/service.remember."""
     extracted = ExtractedRelation(
         source_name="Pedro",
         target_name="ASML",

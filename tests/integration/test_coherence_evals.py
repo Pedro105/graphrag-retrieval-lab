@@ -1,4 +1,4 @@
-"""The multi-agent coherence benchmark (Stage 2 acceptance gate).
+"""The multi-agent coherence checks: adjudication end to end with real extraction.
 
 Five named scenarios, end to end through the real write path (real Claude
 extraction + real OpenAI embeddings + real FalkorDB), asserting the reified-claim

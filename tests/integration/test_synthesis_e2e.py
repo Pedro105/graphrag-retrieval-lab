@@ -74,7 +74,7 @@ async def _recall(graph_store, embedding_provider, query, **kwargs):
 
 # Per-case limit/depth mirror the eval-verified parameters in eval/dataset.yaml
 # (exact_term_rg88, single_hop_korrigan_produces, bridging_korrigan_to_recall).
-# On this small graph HNSW under-returns at larger k (Anomaly 3), so the
+# On this small graph HNSW under-returns at small k, so the
 # seed-friendly limit differs per query -- the same reason the eval cases pin
 # their own limit. retrieval_mode is left unset (defaults to hybrid, as the eval
 # harness does by pinning only traversal_depth).

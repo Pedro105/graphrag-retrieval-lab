@@ -316,7 +316,7 @@ async def recall(
     # _seed_entities above). Once seeded, traversal neighbours are kept in
     # full -- re-slicing the merged seeds+traversal dict here would
     # silently discard exactly the graph-hop results GraphRAG exists to
-    # surface (see Anomaly 4).
+    # surface (regression-tested in tests/unit/core/test_service_recall.py).
     entities = list(entities_by_id.values())
     included_ids = {entity.id for entity in entities}
     relations = [

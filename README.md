@@ -1,178 +1,118 @@
-# ContextStore (graphstore)
+# GraphRAG Lab
 
-**A GraphRAG knowledge layer for multi-writer agents** — not chatbot memory,
-but workflow-shaped memory where multiple agents write structured knowledge
-to a shared graph with entity resolution, conflict adjudication, and
-provenance on every fact.
+A research testbed for GraphRAG: build a knowledge graph from text with an
+LLM, then study how well different retrievers pull the right subgraph back
+out for multi-hop questions.
+
+The guiding question: **does the graph actually help, and can a learned
+retriever choose better subgraphs than heuristics when the graph was built
+by an LLM and is therefore noisy?** See the [research plan](docs/research-plan.md).
+
+[![CI](https://github.com/Pedro105/graphstore/actions/workflows/ci.yml/badge.svg)](https://github.com/Pedro105/graphstore/actions/workflows/ci.yml)
 
 ## Status
 
-Personal research / portfolio project. Business exploration paused. **The
-hosted Fly.io backend may be offline** — run locally to explore (see
-[Local setup](#local-setup) below).
+| Milestone | State |
+|---|---|
+| 1. Cleanup: compose stack, CI, cached LLM client | Done |
+| 2. Neo4j port + benchmark harness with baselines (2WikiMultiHopQA) | Next |
+| 3. Learned GNN retriever (PyTorch Geometric) | Planned |
+| 4. Robustness study under controlled graph noise | Planned |
+| 5. Conflicting / evolving knowledge benchmark | Stretch |
+| 6. Results report and interactive demo | Planned |
 
-## Skills demonstrated
+## What the system does today
 
-- **Reified claim schema**: Facts stored as first-class `:Claim` nodes with
-  provenance, validity windows, and conflict state — not inlined edge
-  properties.
-- **Unstructured→graph ETL**: LLM-powered extraction (Claude Haiku) turns
-  natural language into entities and typed relations.
-- **Entity resolution**: Embedding similarity + property matching merges
-  "Pedro Costa" and "P. Costa" onto one shared entity across independent
-  writes.
-- **Conflict adjudication**: When agents contradict each other, claims enter
-  a `disputed` state for explicit resolution rather than silent overwrites.
-- **Hybrid GraphRAG recall**: Vector seed retrieval followed by graph
-  traversal surfaces connected context that pure similarity search misses.
-- **Eval harness**: Ground-truth dataset with entity presence, property value,
-  and relation value checks — prevents silent regressions.
-- **MCP tools**: Claude Code/Desktop integration via a standalone
-  `uvx`-installable MCP server exposing `remember`/`recall`.
-
-## Architecture
-
-FastAPI backend, FalkorDB graph store with native vector index, Postgres for
-auth/billing metadata. See [`docs/architecture.md`](docs/architecture.md) for
-the full design and [`docs/decisions/`](docs/decisions/) for ADRs.
-
-### Graph model (reified claims)
-
-Claims are reified as `:Claim` nodes linked to subject/object entities via
-`:SUBJECT` / `:OBJECT` edges. The predicate is a node property, not an edge
-type — this allows coherence state (status, validity, provenance,
-supersession, disputes) to live on the fact itself:
-
-```
-(:Entity)<-[:SUBJECT]-(:Claim {
-    predicate: "supplies",
-    status: "active" | "superseded" | "disputed" | "retracted",
-    asserted_by: ["crm-agent", "supplier-agent"],
-    valid_from: datetime,
-    valid_to: datetime | null,
-    supersedes: [claim_id, ...],
-    disputed_with: [claim_id, ...]
-})-[:OBJECT]->(:Entity)
+```mermaid
+flowchart LR
+    T[Text + source] --> X[LLM extraction]
+    X --> R[Entity resolution]
+    R --> A[Claim adjudication]
+    A --> G[(FalkorDB)]
+    Q[Question] --> C[Query classifier]
+    C --> S[Seed: vector / full-text / RRF]
+    G --> S
+    S --> B[BFS traversal]
+    B --> Y[Optional LLM synthesis]
 ```
 
-Multiple agents can assert the same fact (corroboration increments
-`support_count`), contradict each other (mutual `disputed_with` links), or
-supersede prior facts (new claim's `supersedes` + old claim's
-`valid_to`/`status`).
+- **Extraction:** structured LLM output with open-vocabulary relations and
+  assertion semantics (asserted / terminated / negated, `as_of`).
+- **Entity resolution:** embedding similarity plus exact-name matching, with
+  type treated as a soft signal and merge candidates recorded.
+- **Reified claims:** every fact is a `:Claim` node with status
+  (`active` / `superseded` / `disputed` / `retracted`), validity window,
+  asserters and support count. New assertions are adjudicated against
+  existing claims (corroborate, supersede, dispute, or independent) by
+  deterministic rules, with an LLM judge only for the ambiguous case.
+- **Hybrid retrieval:** vector and full-text seeds fused with reciprocal
+  rank fusion, then multi-hop BFS over live claims; a query classifier
+  picks the mode and depth.
+- **Reproducibility:** every LLM call is cached on disk by a hash of its
+  inputs and run at temperature 0, so reruns are free and identical.
 
-## Local setup
+Details: [architecture](docs/architecture.md) ·
+[design decisions](docs/decisions/) ·
+[query classifier notes](docs/classifier_notes.md).
 
-### Prerequisites
+## Quickstart
 
-- Docker (for FalkorDB)
-- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
-- Node.js 20+ and pnpm (for frontend)
-- An Anthropic API key (for LLM extraction)
-
-### Backend
+Requires Docker, Python 3.12 and [uv](https://docs.astral.sh/uv/). Ingesting
+text needs an Anthropic key (extraction) and an OpenAI key (embeddings).
 
 ```bash
-# Start FalkorDB
-docker run -p 6379:6379 -p 3000:3000 falkordb/falkordb:latest
-
-# From repo root
-cp .env.example .env
-# Edit .env: set ANTHROPIC_API_KEY at minimum
-
-uv sync
-uv run uvicorn graphrag_lab.api.app:app --reload
+make install                 # uv sync
+cp .env.example .env         # add ANTHROPIC_API_KEY and OPENAI_API_KEY
+make up                      # FalkorDB on :6379, graph browser on :3000
+make api                     # API on :8000 (or: docker compose up -d)
 ```
 
-Verify:
+Ingest two contradictory statements from different sources, then ask:
 
 ```bash
-curl localhost:8000/health
-curl localhost:8000/ready
+curl -s localhost:8000/v1/memories -H 'Content-Type: application/json' \
+  -d '{"tenant_id": "demo", "source": "crm-agent",
+       "content": "Maria Silva works at Helios Therapeutics."}'
+
+curl -s localhost:8000/v1/memories -H 'Content-Type: application/json' \
+  -d '{"tenant_id": "demo", "source": "hr-agent",
+       "content": "Maria Silva works at Cascade Labs."}'
+
+curl -s "localhost:8000/v1/conflicts?tenant_id=demo"      # the dispute, with asserters
+curl -s localhost:8000/v1/recall -H 'Content-Type: application/json' \
+  -d '{"tenant_id": "demo", "query": "Where does Maria Silva work?", "synthesise": true}'
 ```
 
-### Frontend
+Interactive API docs are at `http://localhost:8000/docs`.
+
+## Development
 
 ```bash
-cd frontend
-cp .env.example .env.local
-pnpm install
-pnpm dev
+make check              # ruff, mypy --strict, unit tests (offline)
+make test-integration   # needs `make up`; LLM-backed tests also need API keys
+make populate && make eval   # synthetic 3-cluster graph + recall smoke eval
 ```
 
-Opens at `http://localhost:3000`.
+CI runs the lint, type and unit job, and the integration suite against a
+FalkorDB service container.
 
-### MCP server (Claude Code / Claude Desktop)
+## Repository layout
 
-The MCP server is a standalone package in `graphrag_lab-mcp/` that calls the
-backend over HTTP:
-
-```bash
-claude mcp add graphrag_lab \
-  --env CONTEXTSTORE_API_KEY=csk_live_... \
-  --env CONTEXTSTORE_API_URL=http://localhost:8000 \
-  -- uvx graphrag_lab-mcp
 ```
-
-See [`graphrag_lab-mcp/README.md`](graphrag_lab-mcp/README.md) for full
-configuration.
-
-## Demo: coherence and disputes
-
-The memories page (`/dashboard/memories`) visualizes the entity graph with
-disputed edges highlighted. Ingest contradictory facts from different agents
-to see disputes surface:
-
-```bash
-# Agent A says price is $10
-curl -X POST localhost:8000/v1/memories \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Acme quoted $10/unit for Product Y","source":"supplier-agent"}'
-
-# Agent B says price is $12
-curl -X POST localhost:8000/v1/memories \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Acme is charging $12/unit for Product Y","source":"pricing-agent"}'
+src/graphrag_lab/
+  api/          FastAPI routes (ingest, recall, graph/claims/conflict inspection)
+  core/         remember/recall orchestration, query classifier, synthesis, config
+  extraction/   extraction prompt, schemas, call
+  resolution/   entity resolution, claim adjudication
+  retrieval/    rank fusion, BFS traversal
+  graph/        GraphStore interface + FalkorDB implementation (all Cypher)
+  vector/       embedding providers
+  llm/          cached structured LLM client
+  models/       pydantic contracts between modules
+tests/          unit (offline) and integration (live FalkorDB) suites
+eval/           recall smoke eval over a synthetic graph
+docs/           architecture, research plan, ADRs
 ```
-
-The graph UI shows the conflicting claims with their `disputed` status.
-
-## Eval harness
-
-```bash
-# Run against local backend
-uv run python eval/run_eval.py
-
-# Against a different backend/tenant
-uv run python eval/run_eval.py \
-  --base-url http://localhost:8000 \
-  --tenant-id graphrag_lab_demo
-```
-
-Reports are written to `eval/reports/`. See [`eval/README.md`](eval/README.md)
-for adding test cases and interpretation.
-
-## What's here vs. what's not
-
-### What's here
-
-- Core API: `remember()`, `recall()`, entity graph inspection
-- LLM extraction with entity resolution and conflict adjudication
-- Hybrid vector + graph retrieval
-- Multi-tenant isolation (graph-per-tenant)
-- MCP server for Claude integration
-- Eval harness with ground-truth checks
-- Next.js frontend with graph visualization
-- Fly.io + Cloudflare deployment configs (`deploy/`, `docs/deployment.md`)
-
-### What's not here
-
-- **No AWS Step Functions / Pulumi** — deployment is Fly.io + Cloudflare
-- **No billing product** — auth/keys exist for API access, but there's no
-  payment integration
-- **No always-on hosted demo** — the Fly.io backend may be offline; run
-  locally
 
 ## License
 

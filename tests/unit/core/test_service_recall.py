@@ -1,6 +1,6 @@
 """Unit tests for recall()'s limit semantics, fully mocked (no real API calls).
 
-Regression coverage for Anomaly 4: `limit` must bound the vector-seed step
+Regression coverage: `limit` must bound the vector-seed step
 only. Traversal results from those seeds must survive even when `limit` is
 tight enough that seeds alone would exceed it.
 """

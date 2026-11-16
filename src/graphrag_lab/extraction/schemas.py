@@ -22,12 +22,10 @@ class ExtractedRelation(BaseModel):
     source_name: str = Field(min_length=1)
     target_name: str = Field(min_length=1)
     relation_type: str = Field(min_length=1)
-    # Assertion semantics. These let extraction represent a relationship that
-    # has ENDED or never held, instead of silently dropping that signal (the
-    # root cause of facts never being superseded). They are produced by
-    # extraction now but NOT yet consumed by the write path -- Stage 2 (the
-    # reified-claim adjudication) reads them; until then they pass through
-    # harmlessly (core/service.py ignores them when building a Relation).
+    # Assertion semantics: let extraction represent a relationship that has
+    # ended or never held instead of dropping that signal. Consumed by claim
+    # adjudication (resolution/conflict_resolver.py), not by the display
+    # Relation model.
     assertion_type: AssertionType = Field(
         default="asserted",
         description=(

@@ -19,7 +19,7 @@ checks missed a real bug). See README.md for how to add cases.
 
 Per-case `limit` and `traversal_depth` override the --limit/--traversal-depth
 CLI defaults (see dataset.yaml's bridging cases for why per-case `limit` is
-needed: FalkorDB's small-graph HNSW under-return, Anomaly 3, means the
+needed: FalkorDB's HNSW index under-returns at small k on small graphs, so the
 seed-friendly k differs per query on this graph size).
 
 category: bridging is special-cased: the runner automatically runs the case

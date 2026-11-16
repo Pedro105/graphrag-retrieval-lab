@@ -1,4 +1,4 @@
-"""Stage 3 acceptance (endpoint): GET /v1/conflicts surfaces live disputes with
+"""GET /v1/conflicts surfaces live disputes with
 provenance, grouped by subject+predicate, and excludes resolved (non-disputed)
 facts. GraphStore is mocked -- no FalkorDB, no LLM.
 """

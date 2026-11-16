@@ -216,8 +216,8 @@ async def adjudicate(
 
     if assertion.has_recency_signal:
         # The text frames this as the current/new state: a deliberate update.
-        # Same asserter -> supersede; different asserter -> dispute (locked rule:
-        # never silently overwrite another agent's claim).
+        # Same asserter -> supersede; different asserter -> dispute (never
+        # silently overwrite another source's claim).
         decision: Literal["supersede", "dispute"] = "dispute" if cross_asserter else "supersede"
     else:
         verdict = await (judge or ClaimJudge()).judge(assertion, other_object)

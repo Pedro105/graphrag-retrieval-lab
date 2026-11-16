@@ -212,7 +212,7 @@ async def test_searches_without_a_hard_type_filter():
     assert args[2] is None
 
 
-# --- Stage 0a acceptance: type is a soft signal, not a hard partition --------
+# --- type is a soft signal, not a hard partition ------------------------------
 
 
 async def test_same_name_different_type_merges_into_one_node():

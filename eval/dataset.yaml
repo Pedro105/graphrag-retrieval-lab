@@ -18,7 +18,7 @@
 #   query:               natural-language query sent to /v1/recall
 #   limit:               optional, overrides --limit for this case. Several
 #                        cases below need a specific value because of
-#                        Anomaly 3 (FalkorDB HNSW under-returns at small k on
+#                        FalkorDB's HNSW index under-returning at small k on
 #                        small graphs) -- this is a known small-graph
 #                        artifact, not a retrieval quality issue, so the
 #                        right move is encoding the working limit per case,
@@ -58,7 +58,7 @@
 #   note:                optional, context a human should know when reading
 #                        a failure
 #
-# Known non-determinism, documented (not in scope to fix, see CLAUDE.md):
+# Known non-determinism:
 # extraction relation_type and property NAME naming both vary slightly
 # across re-ingestions of the same sentence (e.g. the funding round's
 # active property below has been observed as `amount_raised`, `amount`, or
@@ -87,7 +87,7 @@ cases:
     expected_entities:
       - RG-88
     note: >
-      limit=3, not 2: at limit=2 this query seeds zero entities (Anomaly 3 --
+      limit=3, not 2: at limit=2 this query seeds zero entities (HNSW small-k under-return --
       verified directly via find_similar_entities). limit=3 reliably seeds
       RG-88 (plus its 1-hop neighbours, which don't affect this presence-only
       check).
@@ -150,7 +150,7 @@ cases:
       co-mention both Chen and RG-88; see scripts/populate_graph.py). RG-88
       is RiboGen's rival compound, semantically distant enough from Chen/
       Stanford that vector search doesn't seed it directly. limit=2 under-
-      seeds Chen entirely on this graph (Anomaly 3); limit=3 is the verified
+      seeds Chen entirely on this graph (HNSW small-k under-return); limit=3 is the verified
       working value -- confirmed via direct /v1/recall calls: depth=1
       reaches only {Chen, Helios Therapeutics, Stanford University, CRISPR-X
       stability study}, depth=2 additionally reaches RG-88.
@@ -169,7 +169,7 @@ cases:
       architecture whitepaper <-[influenced_by]- AuroraML. No direct Osei
       <->AuroraML edge -- the whitepaper->AuroraML influence fact was
       written in a separate call naming Priya Nair, not Osei. limit=2 and
-      limit=3 both under-seed Osei on this graph (Anomaly 3); limit=4 is the
+      limit=3 both under-seed Osei on this graph (HNSW small-k under-return); limit=4 is the
       verified working value -- depth=1 reaches only {Osei, Cascade, Vertex
       AI Labs, UC Berkeley AI Research Lab, the whitepaper}, depth=2
       additionally reaches AuroraML.
