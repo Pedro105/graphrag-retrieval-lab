@@ -19,7 +19,7 @@ from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.relation import Relation
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.core.service import remember
-from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.vector.embeddings import build_embedding_provider
 
 
 def _falkordb_env() -> tuple[str, int]:
@@ -53,11 +53,7 @@ async def tenant_id(store):
 @pytest.fixture
 def embeddings():
     settings = get_settings()
-    return OpenAIEmbeddingProvider(
-        api_key=settings.openai_api_key.get_secret_value(),
-        model=settings.embedding_model,
-        dimensions=settings.embedding_dimension,
-    )
+    return build_embedding_provider(settings)
 
 
 async def _remember(store, embeddings, scope, source: str, content: str):

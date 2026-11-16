@@ -38,7 +38,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --from=builder --chown=app:app /app/src /app/src
-RUN mkdir -p /app/.cache/llm && chown -R app:app /app/.cache
+RUN mkdir -p /app/.cache/llm /home/app/.cache/huggingface \
+    && chown -R app:app /app/.cache /home/app/.cache
 
 USER app
 

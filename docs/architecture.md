@@ -86,7 +86,9 @@ and experiments apart.
 All LLM use goes through `llm/client.py`: Instructor structured outputs at
 temperature 0, cached on disk by a hash of model, prompts, parameters and
 response schema ([ADR 0003](decisions/0003-cache-llm-calls-on-disk.md)).
-Embeddings currently use OpenAI `text-embedding-3-small`.
+Embeddings come from a local sentence-transformers model
+(`BAAI/bge-small-en-v1.5`, 384 dimensions) by default; OpenAI
+`text-embedding-3-small` remains selectable via `EMBEDDING_PROVIDER=openai`.
 
 ## Modules
 

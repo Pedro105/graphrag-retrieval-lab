@@ -19,7 +19,7 @@ from graphrag_lab.core.config import get_settings
 from graphrag_lab.core.service import recall
 from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.scope import Scope
-from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.vector.embeddings import build_embedding_provider
 
 TENANT_ID = "eval_test"
 
@@ -50,11 +50,7 @@ async def graph_store():
 @pytest.fixture
 def embedding_provider():
     settings = get_settings()
-    return OpenAIEmbeddingProvider(
-        api_key=settings.openai_api_key.get_secret_value(),
-        model=settings.embedding_model,
-        dimensions=settings.embedding_dimension,
-    )
+    return build_embedding_provider(settings)
 
 
 async def _recall(graph_store, embedding_provider, query, **kwargs):

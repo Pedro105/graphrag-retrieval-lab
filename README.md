@@ -58,11 +58,12 @@ Details: [architecture](docs/architecture.md) ·
 ## Quickstart
 
 Requires Docker, Python 3.12 and [uv](https://docs.astral.sh/uv/). Ingesting
-text needs an Anthropic key (extraction) and an OpenAI key (embeddings).
+text needs an Anthropic key for extraction; embeddings run locally
+(`BAAI/bge-small-en-v1.5`, downloaded on first use).
 
 ```bash
 make install                 # uv sync
-cp .env.example .env         # add ANTHROPIC_API_KEY and OPENAI_API_KEY
+cp .env.example .env         # add ANTHROPIC_API_KEY
 make up                      # FalkorDB on :6379, graph browser on :3000
 make api                     # API on :8000 (or: docker compose up -d)
 ```

@@ -89,9 +89,13 @@ class StructuredLLM:
 
     def _get_client(self) -> instructor.AsyncInstructor:
         if self._client is None:
-            settings = get_settings()
+            api_key = get_settings().anthropic_api_key
+            if api_key is None:
+                raise RuntimeError(
+                    "ANTHROPIC_API_KEY is not set and this LLM call is not in the cache"
+                )
             self._client = instructor.from_anthropic(
-                anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
+                anthropic.AsyncAnthropic(api_key=api_key.get_secret_value())
             )
         return self._client
 

@@ -14,7 +14,6 @@ from uuid import UUID
 import structlog
 
 from graphrag_lab.core.classifier import QueryClassifier
-from graphrag_lab.core.config import get_settings
 from graphrag_lab.extraction.extractor import extract
 from graphrag_lab.graph.store import GraphStore
 from graphrag_lab.models.classification import ClassifierResult
@@ -68,8 +67,7 @@ async def remember(
     """Extract -> resolve -> write one memory. Returns the persisted Memory and
     the number of tokens the extraction LLM call consumed (surfaced for usage
     accounting at the API boundary; 0 if the provider reported none)."""
-    settings = get_settings()
-    await graph_store.ensure_graph_initialized(scope.tenant_id, settings.embedding_dimension)
+    await graph_store.ensure_graph_initialized(scope.tenant_id, embedding_provider.dimension)
 
     existing_predicates = await graph_store.find_predicates(scope)
     extracted_entities, extracted_relations, tokens_used = await extract(

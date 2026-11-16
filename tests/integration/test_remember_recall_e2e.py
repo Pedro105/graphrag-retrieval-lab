@@ -16,7 +16,7 @@ from graphrag_lab.core.config import get_settings
 from graphrag_lab.core.service import recall, remember
 from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
 from graphrag_lab.models.scope import Scope
-from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.vector.embeddings import build_embedding_provider
 
 
 def _falkordb_env() -> tuple[str, int]:
@@ -50,11 +50,7 @@ async def tenant_id(graph_store):
 
 async def test_remember_then_recall_resolves_entities_across_facts(graph_store, tenant_id):
     settings = get_settings()
-    embedding_provider = OpenAIEmbeddingProvider(
-        api_key=settings.openai_api_key.get_secret_value(),
-        model=settings.embedding_model,
-        dimensions=settings.embedding_dimension,
-    )
+    embedding_provider = build_embedding_provider(settings)
     scope = Scope.from_dict({"tenant_id": tenant_id, "user_id": "u_test"})
 
     facts = [

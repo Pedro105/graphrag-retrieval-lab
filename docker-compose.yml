@@ -31,6 +31,8 @@ services:
     volumes:
       # Persist the LLM response cache across container restarts.
       - llm-cache:/app/.cache/llm
+      # Downloaded embedding models, so they are fetched once.
+      - hf-cache:/home/app/.cache/huggingface
     depends_on:
       falkordb:
         condition: service_healthy
@@ -38,3 +40,4 @@ services:
 volumes:
   falkordb-data:
   llm-cache:
+  hf-cache:

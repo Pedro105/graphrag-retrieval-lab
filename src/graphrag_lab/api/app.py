@@ -10,7 +10,7 @@ from fastapi import FastAPI, Response, status
 from graphrag_lab.api.routes import router
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.graph.falkordb_store import FalkorDBGraphStore
-from graphrag_lab.vector.embeddings import OpenAIEmbeddingProvider
+from graphrag_lab.vector.embeddings import build_embedding_provider
 
 APP_VERSION = "0.2.0"
 
@@ -42,11 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             settings.falkordb_password.get_secret_value() if settings.falkordb_password else None
         ),
     )
-    app.state.embedding_provider = OpenAIEmbeddingProvider(
-        api_key=settings.openai_api_key.get_secret_value(),
-        model=settings.embedding_model,
-        dimensions=settings.embedding_dimension,
-    )
+    app.state.embedding_provider = build_embedding_provider(settings)
     logger.info(
         "app_startup", falkordb_host=settings.falkordb_host, falkordb_port=settings.falkordb_port
     )
