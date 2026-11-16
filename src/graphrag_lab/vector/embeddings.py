@@ -53,7 +53,7 @@ class LocalEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimension(self) -> int:
-        dim = self._get_model().get_sentence_embedding_dimension()
+        dim = self._get_model().get_embedding_dimension()
         if dim is None:
             raise ValueError(f"model {self._model_name} does not report an embedding dimension")
         return int(dim)

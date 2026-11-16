@@ -16,7 +16,7 @@ class FakeModel:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    def get_sentence_embedding_dimension(self) -> int:
+    def get_embedding_dimension(self) -> int:
         return 3
 
     def encode(self, texts: list[str], **kwargs: object) -> np.ndarray:
