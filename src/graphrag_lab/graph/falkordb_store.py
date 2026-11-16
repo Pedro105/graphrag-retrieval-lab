@@ -205,7 +205,7 @@ class FalkorDBGraphStore(GraphStore):
         also verified live.
         """
         try:
-            await graph.query("CALL db.idx.fulltext.createNodeIndex('Entity', 'name')")
+            await graph.query("CREATE FULLTEXT INDEX FOR (e:Entity) ON (e.name)")
         except ResponseError as exc:
             if "already indexed" not in str(exc):
                 raise
