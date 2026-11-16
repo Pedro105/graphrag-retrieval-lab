@@ -3,17 +3,13 @@ provenance, grouped by subject+predicate, and excludes resolved (non-disputed)
 facts. GraphStore is mocked -- no FalkorDB, no LLM.
 """
 
-import pytest
-
-try:
-    from contextstore.api.app import app
-except Exception:  # pragma: no cover - environment without ANTHROPIC/OPENAI keys
-    pytest.skip("app import requires API keys in env", allow_module_level=True)
-
 from unittest.mock import AsyncMock
+
+import pytest
 
 from fastapi.testclient import TestClient
 
+from contextstore.api.app import app
 from contextstore.api.dependencies import get_graph_store
 from contextstore.graph.store import GraphStore
 from contextstore.models.entity import Entity

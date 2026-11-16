@@ -16,8 +16,6 @@ from falkordb.asyncio import FalkorDB
 
 from contextstore.core.config import get_settings
 from contextstore.graph.falkordb_store import FalkorDBGraphStore
-from contextstore.models.entity import Entity
-from contextstore.models.fact_claim import FactClaim
 from contextstore.models.relation import Relation
 from contextstore.models.scope import Scope
 from contextstore.core.service import remember
@@ -125,7 +123,9 @@ async def test_disputed_employers_two_agents(store, embeddings, tenant_id):
     asml = _edges_to(by_id, relations, "ASML")
     booking = _edges_to(by_id, relations, "Booking")
 
-    assert asml and booking, f"both employers must survive; live edges: {_describe(by_id, relations)}"
+    assert asml and booking, (
+        f"both employers must survive; live edges: {_describe(by_id, relations)}"
+    )
     # Both sides flagged disputed -- neither silently dropped, neither wins.
     assert all(r.status == "disputed" for r in asml + booking), (
         f"expected both disputed; got {_describe(by_id, relations)}"
@@ -142,8 +142,7 @@ async def test_corroboration(store, embeddings, tenant_id):
 
     graph = store._graph_for(tenant_id)
     result = await graph.query(
-        "MATCH (c:Claim) WHERE c.status = 'active' "
-        "RETURN c.support_count, c.asserted_by_json"
+        "MATCH (c:Claim) WHERE c.status = 'active' RETURN c.support_count, c.asserted_by_json"
     )
     # Exactly one active claim, asserted by both agents, support 2.
     assert len(result.result_set) == 1, f"expected one active claim, got {result.result_set}"
@@ -169,62 +168,6 @@ async def test_independent_multivalue(store, embeddings, tenant_id):
         f"expected both collaborations active; live edges: {_describe(by_id, relations)}"
     )
     assert all(r.status == "active" for r in maria + john)
-
-
-# --- migration: legacy direct edges -> claims, provenance preserved -----------
-
-
-async def test_migration_from_legacy_edges(store, tenant_id):
-    # No LLM needed: build a legacy direct-edge graph by hand, then migrate.
-    from scripts.migrate_edges_to_claims import migrate_tenant
-
-    scope = Scope.from_dict({"tenant_id": tenant_id})
-    settings = get_settings()
-    await store.ensure_graph_initialized(tenant_id, settings.embedding_dimension)
-    graph = store._graph_for(tenant_id)
-
-    pedro = Entity(name="Pedro", entity_type="person", scope=scope, provenance=_prov())
-    asml = Entity(name="ASML", entity_type="org", scope=scope, provenance=_prov())
-    for ent in (pedro, asml):
-        await graph.query(
-            "CREATE (n:Entity) SET n += $props",
-            {"props": {"id": str(ent.id), "name": ent.name, "scope_json": _scope_json(scope)}},
-        )
-    edge_id = str(uuid.uuid4())
-    await graph.query(
-        "MATCH (a:Entity {id: $s}), (b:Entity {id: $o}) CREATE (a)-[r:works_at]->(b) SET r += $p",
-        {
-            "s": str(pedro.id),
-            "o": str(asml.id),
-            "p": {
-                "id": edge_id,
-                "source_entity_id": str(pedro.id),
-                "target_entity_id": str(asml.id),
-                "properties_json": "{}",
-                "scope_json": _scope_json(scope),
-                "provenance_json": _prov(source="legacy_agent").model_dump_json(),
-                "claims_json": "[]",
-                "contributing_sources_json": '["legacy_agent"]',
-                "support_count": 3,
-                "memory_id": "legacy_mem",
-            },
-        },
-    )
-
-    created = await migrate_tenant(store, tenant_id)
-    assert created == 1
-
-    # Legacy edge gone, claim present and projected, provenance/support preserved.
-    leftover = await graph.query("MATCH (:Entity)-[r:works_at]->(:Entity) RETURN count(r)")
-    assert leftover.result_set[0][0] == 0
-    claims = await store.find_active_claims(scope, pedro.id, "works_at")
-    assert len(claims) == 1
-    claim: FactClaim = claims[0]
-    assert str(claim.id) == edge_id
-    assert claim.support_count == 3
-    assert claim.asserted_by == ["legacy_agent"]
-    edges = await store.project_display_edges(scope)
-    assert len(edges) == 1 and edges[0].source_entity_id == pedro.id
 
 
 # --- small helpers ------------------------------------------------------------

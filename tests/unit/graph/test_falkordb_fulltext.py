@@ -27,7 +27,8 @@ def _node(entity_id, name: str, scope: Scope) -> MagicMock:
 
 
 def _store_with_fake_graph(fake_graph: MagicMock) -> FalkorDBGraphStore:
-    store = FalkorDBGraphStore()
+    # Bypass __init__: the falkordb client connects eagerly on construction.
+    store = FalkorDBGraphStore.__new__(FalkorDBGraphStore)
     store._graph_for = MagicMock(return_value=fake_graph)  # type: ignore[method-assign]
     return store
 

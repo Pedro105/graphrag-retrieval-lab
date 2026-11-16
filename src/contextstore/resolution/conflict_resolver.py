@@ -94,7 +94,9 @@ def _retract(claim: FactClaim) -> FactClaim:
 
 def _supersede(assertion: ClaimAssertion, candidates: list[FactClaim]) -> list[FactClaim]:
     now = _now()
-    superseded = [c.model_copy(update={"status": "superseded", "valid_to": now}) for c in candidates]
+    superseded = [
+        c.model_copy(update={"status": "superseded", "valid_to": now}) for c in candidates
+    ]
     new = _new_claim(assertion, "active", supersedes=[c.id for c in candidates])
     return [*superseded, new]
 
@@ -162,7 +164,9 @@ class ClaimJudge:
         client = instructor.from_anthropic(
             anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
         )
-        existing = ", ".join(sorted({c.raw_predicate for c in candidates})) or assertion.raw_predicate
+        existing = (
+            ", ".join(sorted({c.raw_predicate for c in candidates})) or assertion.raw_predicate
+        )
         user = (
             f"Subject: {assertion.subject_name}\n"
             f"Relationship type: {assertion.raw_predicate}\n"

@@ -74,7 +74,7 @@ _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 # RediSearch's query parser treats most punctuation as operators (notably
 # `-` as NOT), so a raw entity name like "RG-88" parses as "RG AND NOT 88"
 # and matches nothing even though the entity exists verbatim -- confirmed
-# live against FalkorDB (scripts/test_ft_index.py). Stripping everything
+# live against FalkorDB. Stripping everything
 # but alphanumerics down to whitespace-separated tokens, then OR-joining
 # them with `|`, avoids the parser entirely and turns "any token matches"
 # into the query semantics (RediSearch's default is AND across
@@ -198,7 +198,7 @@ class FalkorDBGraphStore(GraphStore):
         """Create the full-text index on Entity.name, idempotently.
 
         Safe to call on a graph that already has the index (idempotent --
-        verified live, see scripts/test_ft_index.py) and on a graph that
+        verified live) and on a graph that
         already has entities (FalkorDB backfills existing nodes into a
         newly created full-text index). New writes are indexed
         automatically -- no explicit update step needed after MERGE/SET,

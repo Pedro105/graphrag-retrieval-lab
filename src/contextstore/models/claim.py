@@ -72,9 +72,7 @@ def apply_claim(
             claim_provenance = provenance.model_copy(
                 update={"supersedes": [*(provenance.supersedes or []), str(active.id)]}
             )
-        updated.append(
-            Claim(property_name=property_name, value=value, provenance=claim_provenance)
-        )
+        updated.append(Claim(property_name=property_name, value=value, provenance=claim_provenance))
 
     return updated
 

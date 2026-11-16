@@ -183,7 +183,9 @@ class Conflict(BaseModel):
 
 
 @router.get("/conflicts", response_model=list[Conflict])
-async def list_conflicts(graph_store: GraphStoreDep, tenant_id: str = TenantQuery) -> list[Conflict]:
+async def list_conflicts(
+    graph_store: GraphStoreDep, tenant_id: str = TenantQuery
+) -> list[Conflict]:
     """Live disputes, grouped by subject + predicate, with each competing
     claim's asserters. Superseded/retracted history is excluded."""
     scope = Scope.from_dict({"tenant_id": tenant_id})

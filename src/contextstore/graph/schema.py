@@ -70,9 +70,7 @@ def node_to_claim(properties: dict[str, Any]) -> FactClaim:
         valid_from=datetime.fromisoformat(properties["valid_from"]),
         valid_to=datetime.fromisoformat(valid_to_raw) if valid_to_raw else None,
         supersedes=[UUID(cid) for cid in json.loads(properties.get("supersedes_json", "[]"))],
-        disputed_with=[
-            UUID(cid) for cid in json.loads(properties.get("disputed_with_json", "[]"))
-        ],
+        disputed_with=[UUID(cid) for cid in json.loads(properties.get("disputed_with_json", "[]"))],
         created_at=datetime.fromisoformat(properties["created_at"]),
         last_seen=datetime.fromisoformat(properties["last_seen"]),
         properties=json.loads(properties.get("properties_json", "{}")),

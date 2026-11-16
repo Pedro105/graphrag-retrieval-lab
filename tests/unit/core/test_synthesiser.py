@@ -54,7 +54,9 @@ def make_client(synthesis: SynthesisResult) -> AsyncMock:
 async def test_synthesise_populates_answer_and_filters_grounded_ids():
     real = make_entity(name="Korrigan Cells Ltd", entity_type="Organization")
     other = make_entity(name="LFP-9 Cell", entity_type="Product")
-    result = RecallResult(query="who is Korrigan?", scope=SCOPE, entities=[real, other], stats=STATS)
+    result = RecallResult(
+        query="who is Korrigan?", scope=SCOPE, entities=[real, other], stats=STATS
+    )
 
     # Model cites one real id and one id that isn't in the subgraph.
     returned = SynthesisResult(

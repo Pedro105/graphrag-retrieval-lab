@@ -24,9 +24,9 @@ async def _extract_or_skip(content: str) -> list[ExtractedRelation]:
     return relations
 
 
-def _employment_relations(relations: list[ExtractedRelation], company_token: str) -> list[
-    ExtractedRelation
-]:
+def _employment_relations(
+    relations: list[ExtractedRelation], company_token: str
+) -> list[ExtractedRelation]:
     """Relations whose target name contains `company_token` (case-insensitive).
     Loose on relation_type/name surface form, strict on assertion_type below."""
     token = company_token.casefold()
@@ -53,7 +53,7 @@ async def test_left_and_joined_yields_terminated_plus_asserted():
 
 
 async def test_explicit_negation_is_marked_negated():
-    """"Pedro does not work at ASML" -> a works_at->ASML relation flagged
+    """ "Pedro does not work at ASML" -> a works_at->ASML relation flagged
     negated (not dropped, not asserted)."""
     relations = await _extract_or_skip("Pedro does not work at ASML.")
 
