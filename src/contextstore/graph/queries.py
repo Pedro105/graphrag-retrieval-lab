@@ -56,7 +56,7 @@ RETURN DISTINCT c.raw_predicate AS predicate
 """
 
 # Live claims incident to a set of entities, for the claim-aware traverse()
-# (graph snapshot / admin view).
+# (graph snapshot).
 CLAIMS_INCIDENT_TO = """
 MATCH (c:Claim)-[:SUBJECT]->(s:Entity)
 MATCH (c)-[:OBJECT]->(o:Entity)
@@ -79,10 +79,9 @@ OPTIONAL MATCH (c:Claim)-[:SUBJECT|OBJECT]->(n)
 DETACH DELETE c, n
 """
 
-# Count entities and live claims for a tenant (admin/per-project stats).
+# Count entities and live claims in a tenant's graph.
 COUNT_ENTITIES = "MATCH (n:Entity) RETURN count(n)"
 COUNT_LIVE_CLAIMS = "MATCH (c:Claim) WHERE c.status IN ['active', 'disputed'] RETURN count(c)"
 
-# Disputed claims -- the unresolved cross-asserter conflicts, for the inspection
-# endpoint / MCP tool (Stage 3: surface the wedge).
+# Disputed claims -- unresolved cross-asserter conflicts, for /v1/conflicts.
 DISPUTED_CLAIMS = "MATCH (c:Claim) WHERE c.status = 'disputed' RETURN c"

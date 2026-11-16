@@ -9,10 +9,6 @@
 CLAUDE.md
 .claude/
 
-# Node (frontend has its own .gitignore too; these guard the repo root)
-node_modules/
-.next/
-
 # Eval run reports (regenerable run artifacts; eval/README.md is kept)
 eval/reports/
 

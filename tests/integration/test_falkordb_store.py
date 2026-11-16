@@ -351,7 +351,7 @@ async def test_ensure_graph_initialized_is_idempotent(store, tenant_id):
     await store.ensure_graph_initialized(tenant_id, embedding_dimension=4)
 
 
-# --- Admin operator support: graph_stats / drop_graph ------------------------
+# --- graph_stats / drop_graph -------------------------------------------------
 
 
 async def test_find_disputed_claims_returns_disputed_excludes_resolved(store, tenant_id):

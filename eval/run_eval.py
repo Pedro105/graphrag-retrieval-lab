@@ -33,7 +33,6 @@ hit reflects that directly.
 """
 
 import argparse
-import os
 import sys
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -185,14 +184,12 @@ def check_claim_history(
 def _call_recall(
     client: httpx.Client, query: str, tenant_id: str, limit: int, traversal_depth: int
 ) -> tuple[dict[str, Any] | None, str | None]:
-    # tenant_id is no longer sent in the body -- it's derived from the API key
-    # the client authenticates with (see main()). It stays a parameter only for
-    # report labelling consistency.
     try:
         response = client.post(
             "/v1/recall",
             json={
                 "query": query,
+                "tenant_id": tenant_id,
                 "limit": limit,
                 "traversal_depth": traversal_depth,
             },
@@ -491,18 +488,8 @@ def main() -> int:
         print("No cases found in dataset.", file=sys.stderr)
         return 1
 
-    api_key = os.getenv("CONTEXTSTORE_API_KEY")
-    if not api_key:
-        print(
-            "CONTEXTSTORE_API_KEY is not set. The API now derives tenant_id from "
-            "the API key; create a key bound to the eval tenant and export it.",
-            file=sys.stderr,
-        )
-        return 1
-
     results: list[dict[str, Any]] = []
-    headers = {"Authorization": f"Bearer {api_key}"}
-    with httpx.Client(base_url=args.base_url, timeout=30.0, headers=headers) as client:
+    with httpx.Client(base_url=args.base_url, timeout=30.0) as client:
         for case in cases:
             if case["category"] == "bridging":
                 results.extend(run_bridging_case(client, case, args.tenant_id, args.limit))

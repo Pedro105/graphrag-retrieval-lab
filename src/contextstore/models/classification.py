@@ -39,7 +39,7 @@ class RetrievalStrategy(BaseModel):
 
 class ClassifierResult(BaseModel):
     """Outcome of classifying one query, surfaced on RecallResult so callers
-    (and the frontend recall panel) can see how their query was routed.
+    can see how their query was routed.
 
     `confidence` is the heuristic confidence when `used_llm` is False; when
     the heuristic fell below threshold and the LLM decided, it's a fixed

@@ -36,14 +36,11 @@ written by two different sources.
 """
 
 import argparse
-import os
 import sys
 from typing import Any
 
 import httpx
 
-# Display/label only -- the tenant a write lands in is now derived from the API
-# key the client authenticates with, not sent in the request body.
 TENANT_ID = "eval_test"
 
 # (content, source)
@@ -282,7 +279,7 @@ def _post_memory(client: httpx.Client, content: str, source: str) -> dict[str, A
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         response = client.post(
             "/v1/memories",
-            json={"content": content, "source": source},
+            json={"content": content, "source": source, "tenant_id": TENANT_ID},
         )
         try:
             response.raise_for_status()
@@ -307,7 +304,7 @@ def ingest(client: httpx.Client) -> None:
 
 
 def print_graph_summary(client: httpx.Client) -> None:
-    response = client.get("/v1/graph")
+    response = client.get("/v1/graph", params={"tenant_id": TENANT_ID})
     response.raise_for_status()
     graph = response.json()
     entities = graph["entities"]
@@ -337,17 +334,7 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://localhost:8000")
     args = parser.parse_args()
 
-    api_key = os.getenv("CONTEXTSTORE_API_KEY")
-    if not api_key:
-        print(
-            "CONTEXTSTORE_API_KEY is not set. The API now derives tenant_id from "
-            "the API key; create a key bound to the eval tenant and export it.",
-            file=sys.stderr,
-        )
-        return 1
-
-    headers = {"Authorization": f"Bearer {api_key}"}
-    with httpx.Client(base_url=args.base_url, timeout=60.0, headers=headers) as client:
+    with httpx.Client(base_url=args.base_url, timeout=60.0) as client:
         ingest(client)
         print_graph_summary(client)
 

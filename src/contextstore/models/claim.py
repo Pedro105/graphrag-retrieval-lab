@@ -6,7 +6,7 @@ writers are preserved instead of the first or last writer silently winning.
 `apply_claim` and `derive_active_view` are the two operations every merge
 site (entity resolution, relation write) needs: append this write's claim(s)
 to the history, then derive the backward-compatible single-value view
-(`properties`, `provenance`) that existing callers (including the frontend)
+(`properties`, `provenance`) that existing callers
 already read.
 """
 

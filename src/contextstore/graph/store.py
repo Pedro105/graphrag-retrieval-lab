@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from contextstore.models.entity import Entity
-from contextstore.models.fact import Fact
 from contextstore.models.fact_claim import FactClaim
 from contextstore.models.memory import Memory
 from contextstore.models.relation import Relation
@@ -70,7 +69,7 @@ class GraphStore(ABC):
     @abstractmethod
     async def find_disputed_claims(self, scope: Scope) -> list[FactClaim]:
         """All disputed `:Claim` nodes in `scope`'s tenant -- the unresolved
-        cross-asserter conflicts surfaced by the inspection endpoint / MCP tool."""
+        cross-asserter conflicts surfaced by GET /v1/conflicts."""
 
     @abstractmethod
     async def get_entity(self, entity_id: UUID, tenant_id: str) -> Entity | None:
@@ -162,30 +161,16 @@ class GraphStore(ABC):
         """Return (entity_count, relation_count) for a tenant's graph.
 
         Addresses a tenant directly by id (like `get_entity`/`delete_memory`),
-        for the operator admin view's per-project live stats. Returns (0, 0)
-        for a tenant whose graph has never been written to.
+        Returns (0, 0) for a tenant whose graph has never been written to.
         """
-
-    @abstractmethod
-    async def fetch_entity_claims_page(
-        self, tenant_id: str, offset: int, limit: int
-    ) -> tuple[list[Fact], int]:
-        """One page of flattened entity claims for a tenant, plus the tenant's
-        total :Entity node count (for the pager).
-
-        Pagination is at the *node* level (`ORDER BY id SKIP/LIMIT`), so only one
-        page of nodes is ever materialized -- the whole graph is never loaded.
-        Each node's `claims_json` is expanded to one Fact per claim. Returns
-        ([], 0) for a tenant whose graph was never created. Powers the operator
-        facts table (api/admin_routes.py)."""
 
     @abstractmethod
     async def drop_graph(self, tenant_id: str) -> None:
         """Delete a tenant's entire graph (all entities, relations, indices).
 
-        Destructive and not scoped -- used only by the operator admin "wipe
-        tenant" path. Idempotent: dropping an already-empty/absent graph is a
-        no-op, not an error.
+        Destructive -- used to reset a graph between experiment runs.
+        Idempotent: dropping an already-empty/absent graph is a no-op, not an
+        error.
         """
 
     @abstractmethod
