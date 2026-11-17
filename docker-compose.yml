@@ -3,13 +3,17 @@
 #   docker compose up -d         # graph store + API on :8000
 #
 # Neo4j Browser: http://localhost:7474 (user neo4j, password from NEO4J_PASSWORD).
+#
+# Every port is published on loopback only. The API has no authentication and
+# spends the Anthropic key on each uncached request, and Neo4j ships with a
+# known default password, so neither should be reachable from the network.
 
 services:
   neo4j:
     image: neo4j:2026.10.2-community
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-graphrag-lab-dev}
       NEO4J_server_memory_heap_max__size: 1G
@@ -25,7 +29,7 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - path: .env
         required: false

@@ -123,3 +123,12 @@ def test_to_datetime_accepts_native_neo4j_and_iso() -> None:
     assert to_datetime(now.isoformat()) == now
     with pytest.raises(TypeError):
         to_datetime(42)
+
+
+def test_sanitize_neutralises_operator_words_dedupes_and_caps_clauses() -> None:
+    # A bare uppercase NOT/AND/OR is a Lucene operator even without punctuation.
+    assert sanitize_fulltext_query("what is NOT covered") == "what OR is OR not OR covered"
+    assert sanitize_fulltext_query("AND OR NOT") == "and OR or OR not"
+    assert sanitize_fulltext_query("Acme Acme acme") == "Acme OR acme"
+    long_query = " ".join(f"t{i}" for i in range(5000))
+    assert len(sanitize_fulltext_query(long_query).split(" OR ")) == 256

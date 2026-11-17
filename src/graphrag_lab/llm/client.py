@@ -11,6 +11,7 @@ nothing and returns identical results, and a prompt or schema change
 naturally invalidates exactly the affected entries.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -119,13 +120,23 @@ class StructuredLLM:
     def _write(path: Path | None, model: str, value: BaseModel, tokens: int) -> None:
         if path is None:
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
         record = {"model": model, "tokens": tokens, "value": value.model_dump(mode="json")}
-        # Write-then-rename so a crash never leaves a truncated cache entry.
-        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(record, handle, ensure_ascii=False)
-        os.replace(tmp, path)
+        # Best-effort: the response has already been paid for, so a cache
+        # failure (read-only or full disk) must not discard it and fail the
+        # request -- the caller would retry and pay for the same call again.
+        tmp: str | None = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Write-then-rename so a crash never leaves a truncated cache entry.
+            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(record, handle, ensure_ascii=False)
+            os.replace(tmp, path)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("llm_cache.write_failed", path=str(path), error=str(exc))
+            if tmp is not None:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
 
     async def generate(
         self,

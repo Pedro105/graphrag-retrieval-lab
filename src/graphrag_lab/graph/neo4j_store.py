@@ -46,6 +46,10 @@ logger = structlog.get_logger()
 
 _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _FULLTEXT_TOKEN = re.compile(r"[A-Za-z0-9]+")
+# Bare uppercase AND / OR / NOT are Lucene operators even with no punctuation.
+_LUCENE_OPERATORS = frozenset({"AND", "OR", "NOT"})
+# Lucene rejects a boolean query with more than 1024 clauses.
+_MAX_FULLTEXT_TOKENS = 256
 _DELETE_BATCH = 5_000
 
 
@@ -74,8 +78,20 @@ def fulltext_index_name(tenant_id: str) -> str:
 def sanitize_fulltext_query(query_text: str) -> str:
     """Reduce free text to alphanumeric tokens OR-ed together. Lucene treats
     punctuation as syntax (`-` is NOT, `:` is a field selector), so a raw name
-    like "RG-88" would otherwise parse as "RG NOT 88" and match nothing."""
-    return " OR ".join(_FULLTEXT_TOKEN.findall(query_text))
+    like "RG-88" would otherwise parse as "RG NOT 88" and match nothing.
+
+    A token that is itself an operator word ("what is NOT covered") is
+    lowercased, which makes it a plain term (the index analyzer lowercases
+    anyway); left as-is it would negate the next token or fail to parse.
+    Repeated tokens are dropped and the count is capped to stay under Lucene's
+    clause limit -- both failures surface as "no full-text results".
+    """
+    tokens: dict[str, None] = {}
+    for token in _FULLTEXT_TOKEN.findall(query_text):
+        tokens.setdefault(token.lower() if token in _LUCENE_OPERATORS else token)
+        if len(tokens) >= _MAX_FULLTEXT_TOKENS:
+            break
+    return " OR ".join(tokens)
 
 
 def cosine_from_neo4j_score(score: float) -> float:
@@ -331,8 +347,13 @@ class Neo4jGraphStore(GraphStore):
             pairs: list[tuple[Entity, Relation]] = []
             for record in result.records:
                 neighbour = node_to_entity(dict(record["n"]))
-                if scope.includes(neighbour.scope):
-                    pairs.append((neighbour, claim_to_relation(node_to_claim(dict(record["c"])))))
+                claim = node_to_claim(dict(record["c"]))
+                # The claim is filtered as well as the neighbour, the same rule
+                # `_claims` applies everywhere else: an edge outside the
+                # caller's scope must not be walked or returned just because
+                # both of its endpoints happen to be visible.
+                if scope.includes(neighbour.scope) and scope.includes(claim.scope):
+                    pairs.append((neighbour, claim_to_relation(claim)))
             return pairs
 
         return await breadth_first_traverse(

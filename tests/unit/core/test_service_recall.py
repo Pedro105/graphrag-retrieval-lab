@@ -103,3 +103,27 @@ async def test_limit_bounds_the_vector_seed_step_not_the_final_result():
     graph_store.find_similar_entities.assert_awaited_once()
     args = graph_store.find_similar_entities.await_args.args
     assert args[3] == 1
+
+
+async def test_max_entities_caps_the_seeds_too():
+    seeds = [
+        (make_entity(name=f"Seed {i}", entity_type="Organization"), 0.9 - i * 0.01)
+        for i in range(5)
+    ]
+    graph_store, embedding_provider = make_mocks(seeds, [])
+    kept = [entity for entity, _ in seeds[:2]]
+    graph_store.traverse_from_seeds.return_value = (kept, [], False)
+
+    result = await recall(
+        "q",
+        SCOPE,
+        graph_store,
+        embedding_provider,
+        limit=5,
+        traversal_depth=1,
+        max_entities=2,
+    )
+
+    assert [entity.id for entity in result.entities] == [entity.id for entity in kept]
+    assert result.truncated is True
+    assert graph_store.traverse_from_seeds.await_args.args[1] == [str(e.id) for e in kept]

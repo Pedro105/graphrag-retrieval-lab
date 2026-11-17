@@ -8,10 +8,11 @@ used for in-graph filtering (Scope.includes).
 """
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from graphrag_lab.api.dependencies import EmbeddingProviderDep, GraphStoreDep
 from graphrag_lab.core.service import recall as recall_service
@@ -28,7 +29,23 @@ router = APIRouter(prefix="/v1")
 DEFAULT_TENANT = "default"
 _TENANT_PATTERN = r"^[A-Za-z0-9_-]+$"
 
-TenantQuery = Query(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN)
+# tenant_id becomes part of a Neo4j label and two index names; keep it short.
+_TENANT_MAX_LENGTH = 40
+
+# Request-size ceilings. Every one of these feeds an LLM prompt (extraction,
+# classifier, synthesis) or a graph traversal, so without an upper bound a
+# single request can cost arbitrarily many tokens or pull the whole graph.
+MAX_CONTENT_CHARS = 20_000
+MAX_QUERY_CHARS = 2_000
+MAX_SOURCE_CHARS = 200
+MAX_EVIDENCE_ITEMS = 50
+MAX_EVIDENCE_CHARS = 2_000
+MAX_SCOPE_KEYS = 16
+MAX_SEED_LIMIT = 100
+MAX_TRAVERSAL_DEPTH = 5
+MAX_ENTITIES_CAP = 1_000
+
+TenantQuery = Query(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN, max_length=_TENANT_MAX_LENGTH)
 
 
 def _build_scope(tenant_id: str, extra_scope: dict[str, ScopeValue]) -> Scope:
@@ -38,33 +55,47 @@ def _build_scope(tenant_id: str, extra_scope: dict[str, ScopeValue]) -> Scope:
 
 
 class ScopedRequest(BaseModel):
-    tenant_id: str = Field(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN)
+    tenant_id: str = Field(
+        default=DEFAULT_TENANT, pattern=_TENANT_PATTERN, max_length=_TENANT_MAX_LENGTH
+    )
     extra_scope: dict[str, ScopeValue] = Field(
         default_factory=dict,
+        max_length=MAX_SCOPE_KEYS,
         description="Optional extra scope keys (e.g. user_id, project) within the graph.",
     )
 
 
 class RememberRequest(ScopedRequest):
-    content: str = Field(min_length=1)
-    source: str = Field(min_length=1, description="Who asserted this (agent / document id).")
+    content: str = Field(min_length=1, max_length=MAX_CONTENT_CHARS)
+    source: str = Field(
+        min_length=1,
+        max_length=MAX_SOURCE_CHARS,
+        description="Who asserted this (agent / document id).",
+    )
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    evidence: list[str] | None = None
+    evidence: list[Annotated[str, StringConstraints(max_length=MAX_EVIDENCE_CHARS)]] | None = Field(
+        default=None, max_length=MAX_EVIDENCE_ITEMS
+    )
 
 
 class RecallRequest(ScopedRequest):
-    query: str = Field(min_length=1)
-    limit: int = Field(default=10, ge=1, description="Max seed entities before traversal.")
+    query: str = Field(min_length=1, max_length=MAX_QUERY_CHARS)
+    limit: int = Field(
+        default=10, ge=1, le=MAX_SEED_LIMIT, description="Max seed entities before traversal."
+    )
     traversal_depth: int | None = Field(
         default=None,
         ge=1,
+        le=MAX_TRAVERSAL_DEPTH,
         description="Hops from the seeds. Unset: the query classifier chooses.",
     )
     retrieval_mode: RetrievalMode | None = Field(
         default=None,
         description="Seeding method: vector, fulltext or hybrid. Unset: the classifier chooses.",
     )
-    max_entities: int = Field(default=200, ge=1, description="Hard cap on traversal size.")
+    max_entities: int = Field(
+        default=200, ge=1, le=MAX_ENTITIES_CAP, description="Hard cap on traversal size."
+    )
     synthesise: bool = Field(default=False, description="Also generate a prose answer.")
 
 

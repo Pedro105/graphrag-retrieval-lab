@@ -75,11 +75,22 @@ async def remember(
     )
     provenance = Provenance(source=source, confidence=confidence, evidence=evidence)
 
-    resolved_by_name: dict[str, Entity] = {}
+    # Keyed by id so that several mentions resolving to one entity leave a
+    # single, fully merged Entity to write (see resolve_entity's `pending`).
+    resolved_by_id: dict[UUID, Entity] = {}
+    resolved_id_by_name: dict[str, UUID] = {}
     for extracted_entity in extracted_entities:
-        resolved_by_name[extracted_entity.name] = await resolve_entity(
-            extracted_entity, scope, provenance, graph_store, embedding_provider
+        resolved = await resolve_entity(
+            extracted_entity,
+            scope,
+            provenance,
+            graph_store,
+            embedding_provider,
+            pending=list(resolved_by_id.values()),
         )
+        resolved_by_id[resolved.id] = resolved
+        resolved_id_by_name[extracted_entity.name] = resolved.id
+    resolved_by_name = {name: resolved_by_id[eid] for name, eid in resolved_id_by_name.items()}
 
     relations: list[Relation] = []
     assertions: list[ClaimAssertion] = []
@@ -125,7 +136,7 @@ async def remember(
 
     memory = Memory(
         content=content,
-        entities=list(resolved_by_name.values()),
+        entities=list(resolved_by_id.values()),
         relations=relations,
         scope=scope,
         provenance=provenance,
@@ -282,20 +293,32 @@ async def recall(
         query, scope, graph_store, embedding_provider, limit, effective_mode
     )
 
+    # max_entities is a hard cap on the returned subgraph, seeds included.
+    # traverse_from_seeds enforces it on what it returns, but the seeds are
+    # merged back in below, so a `limit` above the cap would otherwise slip
+    # past it.
+    seeds_truncated = len(seed_entities) > max_entities
+    seed_entities = seed_entities[:max_entities]
+
     # Preserve the seed Entity objects (they carry the embedding vector from
     # the seed step); traverse_from_seeds re-fetches seeds too, but setdefault
     # below keeps the originals and overlays only the newly reached entities.
     entities_by_id: dict[UUID, Entity] = {entity.id: entity for entity in seed_entities}
     relations_by_id: dict[UUID, Relation] = {}
-    truncated = False
+    truncated = seeds_truncated
 
     if seed_entities:
-        reached_entities, reached_relations, truncated = await graph_store.traverse_from_seeds(
+        (
+            reached_entities,
+            reached_relations,
+            traversal_truncated,
+        ) = await graph_store.traverse_from_seeds(
             scope,
             [str(entity.id) for entity in seed_entities],
             effective_depth,
             max_entities,
         )
+        truncated = truncated or traversal_truncated
         for entity in reached_entities:
             entities_by_id.setdefault(entity.id, entity)
         for relation in reached_relations:

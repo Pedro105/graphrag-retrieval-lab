@@ -2,6 +2,7 @@
 an existing one, a likely-duplicate candidate, or genuinely new.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from graphrag_lab.core.config import get_settings
@@ -45,14 +46,29 @@ async def resolve_entity(
     provenance: Provenance,
     graph_store: GraphStore,
     embedding_provider: EmbeddingProvider,
+    pending: Sequence[Entity] = (),
 ) -> Entity:
     """Resolve an extracted entity against existing entities in `scope`'s tenant.
 
     `provenance` is required to construct a new Entity (the model has no
     default) when no sufficiently-similar existing entity is reused as-is;
     it's not part of the resolution decision itself.
+
+    `pending` is the entities already resolved earlier in the same write and
+    not yet persisted. The store cannot see them, so without it two mentions
+    in one text ("Acme" and "ACME") both resolve to "new" and fork into two
+    nodes, and two mentions that merge into the same stored entity are each
+    merged from its stored state, the second write then discarding the
+    first's claims.
     """
     settings = get_settings()
+    normalized = _normalize_name(extracted.name)
+    for pending_entity in pending:
+        if _normalize_name(pending_entity.name) == normalized:
+            return _merge_into_entity(
+                pending_entity, provenance, extracted.properties, extracted.entity_type
+            )
+
     # Embed on the name alone, not "{type}: {name}". Baking the type into the
     # embedding pushed surface-identical entities of different types far apart
     # ("Organization: Acme" vs "Product: Acme" embed at ~0.85), so the same
@@ -66,6 +82,10 @@ async def resolve_entity(
     candidates = await graph_store.find_similar_entities(
         scope, embedding, None, _CANDIDATE_SEARCH_K
     )
+    # Where this write has already merged into a stored candidate, continue
+    # from that merged state rather than the stale stored one.
+    pending_by_id = {entity.id: entity for entity in pending}
+    candidates = [(pending_by_id.get(entity.id, entity), score) for entity, score in candidates]
 
     merge_candidates = []
     if candidates:
@@ -75,7 +95,6 @@ async def resolve_entity(
         # Organization and "Acme" the Product resolve to one node. This is what
         # makes surface-form variants of one name reliably dedup even when their
         # embeddings fall just short of the merge threshold (see _normalize_name).
-        normalized = _normalize_name(extracted.name)
         for candidate_entity, _score in candidates:
             if _normalize_name(candidate_entity.name) == normalized:
                 return _merge_into_entity(

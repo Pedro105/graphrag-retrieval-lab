@@ -301,3 +301,52 @@ async def test_only_top_candidate_decides_outcome_even_with_multiple_results():
     # find_similar_entities is responsible for returning best-first.
     assert result.id == best.id
     assert result.name == best.name
+
+
+async def test_second_mention_in_one_write_merges_into_the_pending_entity():
+    # Nothing is stored yet, so the store reports no candidates for either mention.
+    graph_store, embedding_provider = make_mocks([])
+    first = await resolve_entity(
+        ExtractedEntity(name="Acme", entity_type="org", properties={"hq": "Lisbon"}),
+        SCOPE,
+        PROVENANCE,
+        graph_store,
+        embedding_provider,
+    )
+
+    second = await resolve_entity(
+        ExtractedEntity(name="ACME", entity_type="org", properties={"size": 40}),
+        SCOPE,
+        PROVENANCE,
+        graph_store,
+        embedding_provider,
+        pending=[first],
+    )
+
+    assert second.id == first.id
+    assert second.properties == {"hq": "Lisbon", "size": 40}
+
+
+async def test_repeat_merge_into_a_stored_entity_builds_on_the_pending_state():
+    stored = make_existing_entity(name="Acme Corporation", entity_type="org")
+    graph_store, embedding_provider = make_mocks([(stored, 0.95)])
+    first = await resolve_entity(
+        ExtractedEntity(name="Acme Corp", entity_type="org", properties={"hq": "Lisbon"}),
+        SCOPE,
+        PROVENANCE,
+        graph_store,
+        embedding_provider,
+    )
+
+    # The store still returns the stale stored entity for the second mention.
+    second = await resolve_entity(
+        ExtractedEntity(name="Acme Inc", entity_type="org", properties={"size": 40}),
+        SCOPE,
+        PROVENANCE,
+        graph_store,
+        embedding_provider,
+        pending=[first],
+    )
+
+    assert second.id == stored.id
+    assert second.properties == {"hq": "Lisbon", "size": 40}

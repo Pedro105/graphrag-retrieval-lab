@@ -101,3 +101,16 @@ def test_cache_key_changes_with_every_output_shaping_input() -> None:
     for change in variants:
         assert cache_key(**{**base, **change}) != key, change  # type: ignore[arg-type]
     assert cache_key(**base) == key  # type: ignore[arg-type]
+
+
+async def test_cache_write_failure_still_returns_the_paid_response(tmp_path: Path) -> None:
+    # A file where the cache directory should be: every write fails.
+    blocked = tmp_path / "cache"
+    blocked.write_text("not a directory")
+    client = _fake_client()
+    llm = StructuredLLM(cache_dir=blocked, client=client)
+
+    response = await llm.generate(**CALL)
+
+    assert response.value == Answer(text="hi") and response.tokens == 15
+    client.chat.completions.create_with_completion.assert_awaited_once()
