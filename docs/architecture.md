@@ -98,7 +98,8 @@ Embeddings come from a local sentence-transformers model
 | `core/` | Orchestration (`remember`/`recall`), query classifier, synthesis, config |
 | `extraction/` | Prompt, schemas and the extraction call |
 | `resolution/` | Entity resolution and claim adjudication |
-| `retrieval/` | Rank fusion and BFS traversal |
+| `retrieval/` | Rank fusion, BFS traversal, personalized PageRank |
+| `benchmark/` | Retrievers behind one interface, token budgets, metrics, statistics |
 | `graph/` | `GraphStore` interface and the Neo4j implementation; all Cypher lives here |
 | `vector/` | Embedding providers |
 | `llm/` | Cached structured LLM client |
@@ -106,7 +107,7 @@ Embeddings come from a local sentence-transformers model
 
 Modules communicate only through the pydantic models in `models/`, and the
 database sits behind the `GraphStore` interface, which is what makes the
-planned Neo4j port a contained change.
+move from FalkorDB to Neo4j a contained change.
 
 ## Known limitations
 

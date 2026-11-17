@@ -15,7 +15,7 @@ by an LLM and is therefore noisy?** See the [research plan](docs/research-plan.m
 | Milestone | State |
 |---|---|
 | 1. Cleanup: compose stack, CI, cached LLM client | Done |
-| 2. Neo4j port + benchmark harness with baselines (2WikiMultiHopQA) | In progress: local embeddings and Neo4j done |
+| 2. Neo4j port + benchmark harness with baselines (2WikiMultiHopQA) | In progress: Neo4j, local embeddings, retriever interface, PageRank baseline and metrics done; dataset loader and passage baselines next |
 | 3. Learned GNN retriever (PyTorch Geometric) | Planned |
 | 4. Robustness study under controlled graph noise | Planned |
 | 5. Conflicting / evolving knowledge benchmark | Stretch |
@@ -51,6 +51,11 @@ flowchart LR
 - **Reproducibility:** every LLM call is cached on disk by a hash of its
   inputs and run at temperature 0, so reruns are free and identical.
 
+The benchmark side is being built in `benchmark/`: retrievers that share one
+`retrieve(question, token_budget)` interface (BFS and personalized PageRank
+so far), answer and retrieval metrics, bootstrap confidence intervals and a
+paired significance test. Nothing has been run on a real dataset yet.
+
 Details: [architecture](docs/architecture.md) ·
 [design decisions](docs/decisions/) ·
 [query classifier notes](docs/classifier_notes.md).
@@ -67,6 +72,9 @@ cp .env.example .env         # add ANTHROPIC_API_KEY
 make up                      # Neo4j on :7687, browser on :7474
 make api                     # API on :8000 (or: docker compose up -d)
 ```
+
+The compose ports are bound to `127.0.0.1`. The API has no authentication, so
+do not expose it beyond your own machine.
 
 Ingest two contradictory statements from different sources, then ask:
 
@@ -106,7 +114,8 @@ src/graphrag_lab/
   core/         remember/recall orchestration, query classifier, synthesis, config
   extraction/   extraction prompt, schemas, call
   resolution/   entity resolution, claim adjudication
-  retrieval/    rank fusion, BFS traversal
+  retrieval/    rank fusion, BFS traversal, personalized PageRank
+  benchmark/    retriever interface, token budgets, metrics, statistics
   graph/        GraphStore interface + Neo4j implementation (all Cypher)
   vector/       embedding providers
   llm/          cached structured LLM client

@@ -65,7 +65,12 @@ are published so results reproduce without API keys.
 | UB | Gold supporting facts (upper bound) |
 
 All retrievers share one interface, `retrieve(question, token_budget)`, and
-one answer generator, so only retrieval varies.
+one answer generator, so only retrieval varies. The graph retrievers also
+share the seeding step and a fixed snapshot of the graph, and a context is
+always a prefix of the retriever's ranking cut at the budget, so a retriever
+cannot gain by happening to rank short facts first. Budgets are counted in
+words and punctuation marks rather than with a model tokenizer; the count
+only needs to be the same for every system.
 
 ## The learned retriever (M1/M2)
 
@@ -99,11 +104,12 @@ Each milestone leaves the repository in a demonstrable state.
 
 1. **Cleanup** (done): remove the SaaS layer, rename, compose stack, CI,
    cached LLM client, docs.
-2. **Neo4j port and benchmark harness** (in progress): local embeddings and
-   the Neo4j `GraphStore` are done; remaining are the retriever interface
-   and passage baselines, the 2WikiMultiHopQA loader and ingestion,
-   personalized PageRank, metrics with confidence intervals, and the first
-   results table (RQ1).
+2. **Neo4j port and benchmark harness** (in progress): done are local
+   embeddings, the Neo4j `GraphStore`, the retriever interface with BFS and
+   personalized PageRank behind it, EM / F1 / coverage metrics, bootstrap
+   confidence intervals and a paired permutation test. Remaining are the
+   2WikiMultiHopQA loader and ingestion, the passage baselines, the runner
+   that writes per-question JSONL, and the first results table (RQ1).
 3. **Learned retriever**: M1 and M2, training pipeline, experiment
    tracking, model card (RQ2).
 4. **Robustness study**: corruption operators and degradation curves (RQ3);
