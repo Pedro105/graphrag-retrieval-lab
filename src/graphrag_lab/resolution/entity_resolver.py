@@ -1,6 +1,5 @@
-"""Vector-similarity entity resolution: decide whether an extracted entity is
-an existing one, a likely-duplicate candidate, or genuinely new.
-"""
+"""Entity resolution: is an extracted entity one we already have, a possible
+duplicate of one, or new?"""
 
 from collections.abc import Sequence
 from typing import Any
@@ -14,28 +13,22 @@ from graphrag_lab.models.provenance import Provenance
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.vector.embeddings import EmbeddingProvider
 
-# Cushion above 1 (we only need the single best match) so a same-type match
-# isn't missed just because a few closer-but-wrong-type neighbors come first.
+# A few more than the one best match we need, so an exact-name match is still
+# in the list when near-synonyms outrank it.
 _CANDIDATE_SEARCH_K = 5
 
-# Type is a *soft* signal, not a partition (see resolve_entity). A different
-# entity_type shaves a little off the vector score for the merge/candidate
-# decision -- enough to prefer a same-type match on a tie, not enough to block
-# merging a clearly-the-same entity that two agents typed differently. Small by
-# design: the exact-name fast path (which now crosses types) is what actually
-# fixes the duplicate-entity symptom; this only nudges the fuzzy vector path.
+# Subtracted from the similarity when the types disagree. Small on purpose:
+# two agents often type the same thing differently (Organization vs Company),
+# so type should break ties, not block a merge.
 _TYPE_MISMATCH_PENALTY = 0.05
 
 
 def _normalize_name(name: str) -> str:
-    """Identity key for catching trivial surface variants of one name.
+    """Case- and whitespace-insensitive key for a name.
 
-    Vector similarity alone is too brittle to dedup these: 'Ada Lovelace' vs
-    'Ada lovelace' embeds at only ~0.90 cosine with text-embedding-3-small --
-    below the 0.92 merge threshold -- so a one-letter case change would
-    otherwise spawn a duplicate entity, the exact failure entity resolution
-    exists to prevent. Collapsing case and surrounding/repeated whitespace
-    lets an exact name match force a merge regardless of the vector score.
+    Embeddings are too sensitive to casing to rely on here: "Ada Lovelace"
+    and "Ada lovelace" score about 0.90 with text-embedding-3-small, under
+    the 0.92 merge threshold.
     """
     return " ".join(name.split()).casefold()
 
@@ -48,70 +41,44 @@ async def resolve_entity(
     embedding_provider: EmbeddingProvider,
     pending: Sequence[Entity] = (),
 ) -> Entity:
-    """Resolve an extracted entity against existing entities in `scope`'s tenant.
+    """Return the entity `extracted` refers to: an existing one with this
+    write's properties merged in, or a new one.
 
-    `provenance` is required to construct a new Entity (the model has no
-    default) when no sufficiently-similar existing entity is reused as-is;
-    it's not part of the resolution decision itself.
-
-    `pending` is the entities already resolved earlier in the same write and
-    not yet persisted. The store cannot see them, so without it two mentions
-    in one text ("Acme" and "ACME") both resolve to "new" and fork into two
-    nodes, and two mentions that merge into the same stored entity are each
-    merged from its stored state, the second write then discarding the
-    first's claims.
+    `pending` holds entities resolved earlier in the same write. They are
+    not in the store yet, so without it "Acme" and "ACME" in one text would
+    become two nodes.
     """
     settings = get_settings()
     normalized = _normalize_name(extracted.name)
-    for pending_entity in pending:
-        if _normalize_name(pending_entity.name) == normalized:
-            return _merge_into_entity(
-                pending_entity, provenance, extracted.properties, extracted.entity_type
-            )
+    for entity in pending:
+        if _normalize_name(entity.name) == normalized:
+            return _merge_into(entity, provenance, extracted.properties, extracted.entity_type)
 
-    # Embed on the name alone, not "{type}: {name}". Baking the type into the
-    # embedding pushed surface-identical entities of different types far apart
-    # ("Organization: Acme" vs "Product: Acme" embed at ~0.85), so the same
-    # real-world thing forked into two nodes. Name-only keeps them vector-near,
-    # and type is reconciled below rather than partitioned on.
+    # The embedding is of the name alone. Prefixing the type pushes the same
+    # name apart ("Organization: Acme" vs "Product: Acme" score about 0.85).
     embedding = await embedding_provider.embed(extracted.name)
-
-    # Pass entity_type=None: the store no longer discards cross-type candidates
-    # for resolution. Type handling is the resolver's job now (soft penalty +
-    # exact-name fast path below), so candidates of every type are considered.
     candidates = await graph_store.find_similar_entities(
         scope, embedding, None, _CANDIDATE_SEARCH_K
     )
-    # Where this write has already merged into a stored candidate, continue
-    # from that merged state rather than the stale stored one.
+    # If this write already merged into a candidate, build on that version.
     pending_by_id = {entity.id: entity for entity in pending}
     candidates = [(pending_by_id.get(entity.id, entity), score) for entity, score in candidates]
 
     merge_candidates = []
     if candidates:
-        # Exact-identity fast path: a candidate whose name matches (modulo
-        # case/whitespace) is the same entity, so merge into it regardless of
-        # vector score *or type*. This now crosses entity types: "Acme" the
-        # Organization and "Acme" the Product resolve to one node. This is what
-        # makes surface-form variants of one name reliably dedup even when their
-        # embeddings fall just short of the merge threshold (see _normalize_name).
-        for candidate_entity, _score in candidates:
-            if _normalize_name(candidate_entity.name) == normalized:
-                return _merge_into_entity(
-                    candidate_entity, provenance, extracted.properties, extracted.entity_type
+        # Same name means same entity, whatever the similarity score or type.
+        for candidate, _score in candidates:
+            if _normalize_name(candidate.name) == normalized:
+                return _merge_into(
+                    candidate, provenance, extracted.properties, extracted.entity_type
                 )
 
-        # Fuzzy vector path: trust find_similar_entities' best-first ordering
-        # (take the top candidate), but shave a small penalty off its score when
-        # the type differs, so type stays a tiebreaker rather than a hard gate.
-        best_entity, best_score = candidates[0]
-        adjusted_score = _type_adjusted_score(best_entity, best_score, extracted.entity_type)
-        if adjusted_score >= settings.vector_merge_threshold:
-            return _merge_into_entity(
-                best_entity, provenance, extracted.properties, extracted.entity_type
-            )
-        if adjusted_score >= settings.vector_candidate_threshold:
-            merge_candidates = [best_entity.id]
+        best, best_score = candidates[0]
+        score = _type_adjusted_score(best, best_score, extracted.entity_type)
+        if score >= settings.vector_merge_threshold:
+            return _merge_into(best, provenance, extracted.properties, extracted.entity_type)
+        if score >= settings.vector_candidate_threshold:
+            merge_candidates = [best.id]
 
     claims = apply_claim([], provenance, extracted.properties)
     properties, active_provenance, contributing_sources = derive_active_view(claims)
@@ -130,23 +97,18 @@ async def resolve_entity(
 
 
 def _type_adjusted_score(entity: Entity, score: float, extracted_type: str) -> float:
-    """Vector score with a small penalty when the extracted type isn't one this
-    entity has already been observed as -- type as a soft signal, not a filter."""
     observed = entity.observed_types or [entity.entity_type]
     if extracted_type in observed:
         return score
     return score - _TYPE_MISMATCH_PENALTY
 
 
-def _merge_into_entity(
+def _merge_into(
     entity: Entity, provenance: Provenance, properties: dict[str, Any], new_type: str
 ) -> Entity:
-    """Fold this write's claim(s) into an existing entity rather than
-    discarding them -- see models/claim.py for the conflict/supersession
-    rules. Identity fields (id/name/entity_type/embedding/merge_candidates)
-    are left untouched; `new_type` is unioned into `observed_types` so a
-    type disagreement between writers is recorded, not used to fork the node.
-    """
+    """Add this write's claims to an existing entity. Its id, name, type and
+    embedding stay as they were; a differing type is recorded in
+    `observed_types`."""
     claims = apply_claim(entity.claims, provenance, properties)
     merged_properties, active_provenance, contributing_sources = derive_active_view(claims)
     observed = entity.observed_types or [entity.entity_type]

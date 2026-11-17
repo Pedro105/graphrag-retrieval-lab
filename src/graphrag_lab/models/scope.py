@@ -7,25 +7,18 @@ from pydantic import RootModel, field_validator
 
 ScopeValue = str | int | float | bool
 
-# tenant_id is embedded in Neo4j label and index names, so it's
-# restricted to a safe slug charset rather than allowing arbitrary strings.
+# tenant_id ends up inside Neo4j label and index names.
 _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class Scope(RootModel[dict[str, ScopeValue]]):
-    """A key-value mapping that locates a memory in a logical space.
+    """Where a memory lives: a `tenant_id` plus any other keys (user_id,
+    project, ...).
 
-    `tenant_id` is mandatory on every scope: tenant isolation is enforced
-    structurally (a label and dedicated indexes per tenant, ADR 0004) rather
-    than by filtering a shared vector search.
-    All other scope keys (user_id, project, agent_id, ...) are filtered in
-    application code after retrieval.
-
-    Scopes are otherwise hierarchical and composable: a broader scope
-    `includes` a narrower one if every key-value pair in the broader scope
-    is also present in the narrower one, and both share the same tenant_id.
-    E.g. `{"tenant_id": "acme", "project": "alpha"}` includes
-    `{"tenant_id": "acme", "project": "alpha", "agent_id": "researcher_1"}`.
+    Each tenant has its own label and indexes in Neo4j (ADR 0004). The other
+    keys are filtered in Python after retrieval. A scope includes a narrower
+    one: `{tenant_id: acme, project: alpha}` includes
+    `{tenant_id: acme, project: alpha, agent_id: researcher_1}`.
     """
 
     @field_validator("root")
@@ -49,10 +42,7 @@ class Scope(RootModel[dict[str, ScopeValue]]):
         return cast(str, self.root["tenant_id"])
 
     def includes(self, other: "Scope") -> bool:
-        """Return True if `other` is at least as specific as this scope.
-
-        Always False across tenants, regardless of other keys.
-        """
+        """True if `other` has every key-value pair this scope has."""
         if self.tenant_id != other.tenant_id:
             return False
         return all(other.root.get(key) == val for key, val in self.root.items())

@@ -1,8 +1,4 @@
-"""RecallResult: structured output of a recall() query.
-
-Structured data for now, not prose -- synthesizing a natural-language
-answer from this is a later step.
-"""
+"""The result of a recall() call."""
 
 from pydantic import BaseModel, Field
 
@@ -12,26 +8,21 @@ from graphrag_lab.models.relation import Relation
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.models.synthesis import SynthesisResult
 
-# Re-exported from models/classification.py (its true home -- see that
-# module for why) so existing `from graphrag_lab.models.recall import
-# RetrievalMode` import sites keep working.
 __all__ = ["RecallResult", "RetrievalMode", "RetrievalStats"]
 
 
 class RetrievalStats(BaseModel):
-    """Per-recall timing and graph metrics, captured with time.perf_counter()
-    inside recall() (see core/service.py). Always present on a RecallResult so
-    callers/UI can show how a query was answered without a tracing backend."""
+    """Timings and sizes for one recall."""
 
-    total_ms: float  # end-to-end recall latency in milliseconds
-    retrieval_ms: float  # start to traversal complete (excludes synthesis)
-    synthesis_ms: float | None  # synthesis latency, None when synthesis didn't run
-    seeds_found: int  # entities returned by hybrid fusion before traversal
-    nodes_traversed: int  # total entities in the final subgraph
-    relations_found: int  # total relations in the final subgraph
-    depth_reached: int  # actual traversal depth used (classifier- or caller-chosen)
-    query_class: str  # classifier class, or "manual" when routing was pinned
-    used_llm_classifier: bool  # whether the Haiku classifier fallback fired
+    total_ms: float
+    retrieval_ms: float  # up to the end of traversal, so without synthesis
+    synthesis_ms: float | None  # None when synthesis was not requested
+    seeds_found: int
+    nodes_traversed: int  # entities in the returned subgraph
+    relations_found: int
+    depth_reached: int  # the traversal depth that was used
+    query_class: str  # "manual" when the caller pinned mode or depth
+    used_llm_classifier: bool
 
 
 class RecallResult(BaseModel):
@@ -39,20 +30,10 @@ class RecallResult(BaseModel):
     scope: Scope
     entities: list[Entity] = Field(default_factory=list)
     relations: list[Relation] = Field(default_factory=list)
-    # Populated only when recall() ran the classifier (i.e. the caller left
-    # both retrieval_mode and traversal_depth unspecified). None when the
-    # caller pinned routing explicitly, since no classification happened.
+    # None when the caller pinned mode or depth, since nothing was classified.
     classifier_result: ClassifierResult | None = None
-    # True when multi-hop traversal hit the max_entities cap and the returned
-    # subgraph was truncated before the full depth/graph was exhausted.
+    # The max_entities cap cut the subgraph short.
     truncated: bool = False
-    # Optional natural-language answer synthesised from the entities/relations
-    # above. Populated only when recall() was called with synthesise=True and
-    # the synthesis step succeeded; None otherwise (including when synthesis
-    # was requested but the LLM call failed -- failures degrade to structured
-    # output, they don't propagate). The structured entities/relations are
-    # always returned regardless: synthesis is additive, never a replacement.
+    # None unless synthesis was requested and succeeded.
     synthesis: SynthesisResult | None = None
-    # Timing + graph metrics for this recall. Required (never None): the recall
-    # pipeline always populates it (see core/service.py).
     stats: RetrievalStats

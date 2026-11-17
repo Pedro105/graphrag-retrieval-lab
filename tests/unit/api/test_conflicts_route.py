@@ -1,7 +1,5 @@
-"""GET /v1/conflicts surfaces live disputes with
-provenance, grouped by subject+predicate, and excludes resolved (non-disputed)
-facts. GraphStore is mocked -- no FalkorDB, no LLM.
-"""
+"""GET /v1/conflicts lists live disputes grouped by subject and predicate,
+with who asserted what. The graph store is mocked."""
 
 from unittest.mock import AsyncMock
 

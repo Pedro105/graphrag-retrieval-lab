@@ -1,15 +1,9 @@
-"""Integration test for the hybrid (vector + full-text RRF) recall path,
-against a real Neo4j instance.
+"""Hybrid recall (vector + full-text, fused) against Neo4j.
 
-No real LLM/embedding API calls: entities are written directly via
-write_memory() with hand-picked embeddings (like test_neo4j_store.py's
-vector-ranking tests), and a FakeEmbeddingProvider returns a fixed query
-embedding, so vector similarity is fully deterministic.
-
-The scenario mirrors the problem statement: an alphanumeric identifier
-("RG-88") whose embedding is deliberately unrelated to the query embedding
--- vector search alone has no way to find it, full-text search (an exact
-substring/token match on the entity name) does.
+Entities are written with hand-picked embeddings and the query embedding is
+fixed, so the vector ranking is deterministic. The case of interest is an
+identifier ("RG-88") whose embedding is unrelated to the query: only
+full-text search can find it.
 """
 
 import pytest

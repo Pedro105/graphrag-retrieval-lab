@@ -1,17 +1,12 @@
-"""FactClaim: a reified fact in the graph -- a `:Claim` node connecting a
-subject entity to an object entity, carrying the coherence state (status,
-validity, provenance, supersession, disputes) that a bare typed edge could not.
+"""FactClaim: a fact stored as its own `:Claim` node between a subject and an
+object entity.
 
-This is the unit of multi-agent coherence: several agents can assert, corroborate
-or contest the same fact, and a fact can be superseded or marked disputed without
-ever being deleted. Distinct from the property-level `models/claim.py::Claim`,
-which is *kept and nested* inside a FactClaim (`FactClaim.claims`) to track
-revisions of a fact's own properties (e.g. a revised price on the same fact).
+A plain edge cannot say who asserted it, whether it is still true, or what
+it replaced. A claim node can, which lets several sources assert, confirm or
+contest the same fact, and lets a fact be superseded without being deleted.
 
-`ClaimAssertion` is the transient input the write path hands the adjudicator
-(resolution/conflict_resolver.py): one extracted, entity-resolved relation plus
-its assertion semantics. It is never persisted -- the adjudicator turns it into
-FactClaim(s).
+Not to be confused with `models/claim.py::Claim`, which tracks the history of
+one property. A FactClaim holds a list of those for its own properties.
 """
 
 from datetime import UTC, datetime
@@ -26,9 +21,7 @@ from graphrag_lab.models.provenance import Provenance
 from graphrag_lab.models.scope import Scope
 
 ClaimStatus = Literal["active", "superseded", "disputed", "retracted"]
-# Statuses that represent current truth and so appear in the default graph /
-# recall views (the collapse projection). superseded/retracted are history,
-# reachable only via inspection.
+# Statuses that count as current. Superseded and retracted claims are history.
 LIVE_STATUSES: tuple[ClaimStatus, ...] = ("active", "disputed")
 
 
@@ -38,39 +31,35 @@ def _now() -> datetime:
 
 class FactClaim(BaseModel):
     id: UUID = Field(default_factory=uuid4)
-    # Normalized predicate (used for matching conflicting claims); raw_predicate
-    # is the original free-string relation type from extraction (for display).
+    # `predicate` is normalized and used for matching; `raw_predicate` is the
+    # relation type as extracted, used for display.
     predicate: str = Field(min_length=1)
     raw_predicate: str = Field(min_length=1)
     subject_id: UUID
     object_id: UUID
     status: ClaimStatus = "active"
-    # Every source/agent that has asserted this exact fact (subject+predicate+object).
+    # Every source that has asserted this exact fact.
     asserted_by: list[str] = Field(default_factory=list)
     support_count: int = 1
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)
     valid_from: datetime = Field(default_factory=_now)
-    # Set when the claim leaves active (superseded/retracted); None while live.
+    # Set when the claim is superseded or retracted.
     valid_to: datetime | None = None
-    # Claim ids this claim replaced (set on the new claim when it supersedes).
+    # Ids of the claims this one replaced.
     supersedes: list[UUID] = Field(default_factory=list)
-    # Live, unresolved conflicts with claims from other asserters (mutual link).
+    # Ids of the claims this one conflicts with; the link is mutual.
     disputed_with: list[UUID] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_now)
     last_seen: datetime = Field(default_factory=_now)
-    # Active property view + the property-level claim history backing it
-    # (models/claim.py) -- e.g. a revised price on this same fact.
+    # Current properties and their history, e.g. a revised price.
     properties: dict[str, Any] = Field(default_factory=dict)
     claims: list[Claim] = Field(default_factory=list)
     scope: Scope
 
 
 class ClaimAssertion(BaseModel):
-    """One entity-resolved, extracted relation handed to the adjudicator.
-
-    Transient: built by core/service.py from an ExtractedRelation plus the
-    resolved subject/object entity ids and this write's provenance. Never stored.
-    """
+    """An extracted relation with its entities resolved, ready to adjudicate.
+    Never stored."""
 
     subject_id: UUID
     object_id: UUID
@@ -91,6 +80,5 @@ class ClaimAssertion(BaseModel):
 
     @property
     def has_recency_signal(self) -> bool:
-        """Whether the text marked this as a current/new state replacing a prior
-        one -- the deterministic supersession trigger (no LLM needed)."""
+        """The text marked this as the new state ("now works at", "since March")."""
         return self.replaces_hint or self.as_of is not None

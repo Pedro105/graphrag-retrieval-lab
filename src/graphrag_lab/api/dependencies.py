@@ -1,10 +1,5 @@
-"""FastAPI dependency injection for shared backend clients.
-
-Both GraphStore and EmbeddingProvider instances are constructed once in
-api/app.py's lifespan and stored on app.state; these dependencies just
-hand callers that shared instance rather than constructing a new one per
-request.
-"""
+"""The shared graph store and embedding provider, built once in the app's
+lifespan and handed to routes."""
 
 from typing import Annotated
 

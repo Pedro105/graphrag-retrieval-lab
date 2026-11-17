@@ -1,9 +1,7 @@
-"""Integration test for multi-hop traverse_from_seeds against the live
-eval_test graph (the 3 engineered 2-hop chains from scripts/populate_graph.py).
+"""Multi-hop traversal on the eval_test graph from scripts/populate_graph.py.
 
-Each chain's end entity C must be ABSENT at depth=1 and PRESENT at depth=2 --
-the same falsifiability the eval harness checks, exercised here directly
-against the store. Skips if Neo4j isn't reachable or eval_test hasn't been seeded.
+The far end of each engineered two-hop chain must be absent at depth 1 and
+present at depth 2. Skips if eval_test has not been populated.
 """
 
 import pytest

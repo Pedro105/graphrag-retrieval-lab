@@ -1,4 +1,4 @@
-"""LLM-based entity/relation extraction (structured output via llm/client.py)."""
+"""Entity and relation extraction with one structured LLM call."""
 
 from graphrag_lab.core.config import get_settings
 from graphrag_lab.extraction.prompts import EXTRACTION_SYSTEM_PROMPT
@@ -7,23 +7,12 @@ from graphrag_lab.llm.client import StructuredLLM, get_llm
 
 
 def _build_user_message(content: str, existing_relation_types: list[str] | None) -> str:
-    """Bias extraction toward reusing an existing relation_type for the same
-    conceptual fact, rather than inventing a new-but-synonymous string on
-    every write.
+    """Prepend the relation types already in the graph.
 
-    Why this exists: claim adjudication (resolution/conflict_resolver.py)
-    matches facts on an exact normalized predicate. relation_type is otherwise a free
-    string (extraction/schemas.py), so nothing previously stopped the model
-    from extracting "owns" one call and "relates_to" another for what's
-    really an update to the same relationship -- the second write then
-    silently created a parallel edge instead of updating the first (see the
-    eval harness's globex_current_price_single_hop case). Telling the model
-    what's already in the graph lets it make the same call a human curator
-    would: reuse the existing string for an update to the same kind of
-    relationship, but still mint a new one when the text genuinely
-    describes something different. Tenant-wide rather than entity-pair-
-    specific, since which pair is involved isn't known until after this
-    same extraction call resolves entity names.
+    Claims are matched on the exact predicate, so if the model calls the same
+    relationship "owns" in one text and "has" in the next, an update becomes
+    a second, parallel fact. Showing it the existing vocabulary makes reuse
+    much more likely.
     """
     if not existing_relation_types:
         return content
@@ -44,8 +33,7 @@ async def extract(
     existing_relation_types: list[str] | None = None,
     llm: StructuredLLM | None = None,
 ) -> tuple[list[ExtractedEntity], list[ExtractedRelation], int]:
-    """Extract entities and relations from `content`. Also returns the tokens
-    the (original, uncached) LLM call consumed, for cost accounting."""
+    """Returns (entities, relations, tokens used by the original LLM call)."""
     settings = get_settings()
     response = await (llm or get_llm()).generate(
         model=settings.extraction_model,

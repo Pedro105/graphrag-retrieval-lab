@@ -1,20 +1,9 @@
-"""Extraction prompt: text to structured entities and relations.
+"""The extraction prompt.
 
-Previously this prompt offered a short fixed list of relation types and
-told the model not to "guess at relationships ... mentioned in the same
-sentence." That caused both extraction failures it was rewritten to fix:
-generic types like `works_at` got reused for employment, academic
-enrollment, and internships alike (the fixed list anchored toward the
-nearest listed type), and entities that didn't fit the list were left
-isolated ("don't guess" read as "default to no edge"). relation_type was
-already a free string (extraction/schemas.py) — this was a prompting
-problem, not a schema one. The prompt below instead asks the model to
-mint a precise, situation-specific snake_case relation name every time,
-explicitly distinguishes employment/enrollment/internship, treats
-isolation as a last resort rather than a safe default, and adds few-shot
-examples marking that boundary. `_build_user_message`'s existing-type
-reuse nudge in extractor.py (a different problem: avoiding parallel edges
-for updates to the same fact) is unaffected and still applies on top.
+Relation types are open vocabulary: the model names each relationship itself
+rather than picking from a list. An earlier fixed list made it file
+employment, enrolment and internships all under `works_at`, and leave
+entities unconnected when nothing on the list fitted.
 """
 
 EXTRACTION_SYSTEM_PROMPT = """\

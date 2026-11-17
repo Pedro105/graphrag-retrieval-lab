@@ -1,9 +1,5 @@
-"""Extraction-time intermediate representations.
-
-These are deliberately not the full Entity/Relation models: scope and
-provenance are attached later by the orchestrating service
-(core/service.py), once entities have been resolved against the graph.
-"""
+"""What the extraction call returns. Scope and provenance are added later,
+once the entities have been resolved against the graph."""
 
 from typing import Any, Literal
 
@@ -22,10 +18,7 @@ class ExtractedRelation(BaseModel):
     source_name: str = Field(min_length=1)
     target_name: str = Field(min_length=1)
     relation_type: str = Field(min_length=1)
-    # Assertion semantics: let extraction represent a relationship that has
-    # ended or never held instead of dropping that signal. Consumed by claim
-    # adjudication (resolution/conflict_resolver.py), not by the display
-    # Relation model.
+    # The field descriptions below are sent to the model as part of the schema.
     assertion_type: AssertionType = Field(
         default="asserted",
         description=(
@@ -54,7 +47,5 @@ class ExtractedRelation(BaseModel):
 
 
 class ExtractionResult(BaseModel):
-    """Wrapper used as the Instructor response_model (a single structured call)."""
-
     entities: list[ExtractedEntity] = Field(default_factory=list)
     relations: list[ExtractedRelation] = Field(default_factory=list)

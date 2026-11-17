@@ -1,13 +1,8 @@
-"""Claim: a single source's assertion, optionally about one entity/relation
-property. Entities and relations keep a full list of claims (see
-`Entity.claims` / `Relation.claims`) so that multiple, possibly conflicting,
-writers are preserved instead of the first or last writer silently winning.
+"""Claim: one source's statement about one property of an entity or relation.
 
-`apply_claim` and `derive_active_view` are the two operations every merge
-site (entity resolution, relation write) needs: append this write's claim(s)
-to the history, then derive the backward-compatible single-value view
-(`properties`, `provenance`) that existing callers
-already read.
+Every claim is kept, so a later writer never silently replaces an earlier
+one. `apply_claim` adds a write's claims to the history and
+`derive_active_view` reduces a history to the current values.
 """
 
 from typing import Any
@@ -45,19 +40,12 @@ def apply_claim(
     provenance: Provenance,
     properties: dict[str, Any],
 ) -> list[Claim]:
-    """Append the claim(s) for one write's touch of an entity/relation.
+    """Add one write's claims to a history: one per property, or a single
+    property-less claim if the write stated none, so the source is still
+    recorded.
 
-    One claim per asserted property. If no properties were asserted, a
-    single `property_name=None` claim still records that this source
-    touched the entity/relation, so `contributing_sources` reflects every
-    writer, not just ones that asserted a property value.
-
-    When an asserted property's value differs from the currently active
-    claim's value for that property, the prior claim is marked superseded
-    via `provenance.supersedes` -- it is never removed from the list.
-    "Different value" triggers supersession regardless of whether the new
-    claim's source matches the old one's (a source can revise its own
-    earlier claim, not just be overridden by another source).
+    A claim whose value differs from the current one supersedes it, whoever
+    made either. The older claim stays in the list.
     """
     updated = list(claims)
 
@@ -78,13 +66,11 @@ def apply_claim(
 
 
 def derive_active_view(claims: list[Claim]) -> tuple[dict[str, Any], Provenance, list[str]]:
-    """Compute the backward-compatible (properties, provenance, contributing_sources)
-    view from a full claim history.
+    """Reduce a history to (properties, provenance, contributing_sources).
 
-    `properties` and `provenance` resolve to the latest-claim-wins active
-    value (per the default "no conflict resolution beyond recency" policy);
-    `contributing_sources` is every distinct source that has ever made a
-    claim, including ones that only ever corroborated an existing value.
+    The newest non-superseded claim wins for each property, the provenance is
+    that of the newest claim overall, and the sources are everyone who ever
+    made a claim.
     """
     property_names = {claim.property_name for claim in claims if claim.property_name is not None}
     properties: dict[str, Any] = {}
@@ -96,8 +82,6 @@ def derive_active_view(claims: list[Claim]) -> tuple[dict[str, Any], Provenance,
     contributing_sources = sorted({claim.provenance.source for claim in claims})
 
     if not claims:
-        # Should not occur in practice -- every Entity/Relation gets at
-        # least one claim via apply_claim() on creation.
         return properties, Provenance(source="unknown"), contributing_sources
 
     latest = max(claims, key=lambda claim: claim.provenance.created_at)

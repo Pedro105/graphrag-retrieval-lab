@@ -1,8 +1,5 @@
-"""Unit tests for the claim adjudicator decision table (resolution/
-conflict_resolver.py). The LLM fallback (row 6) is mocked -- no API key, no
-FalkorDB. These pin the deterministic branches; the live, end-to-end behaviour
-is the five named integration evals (test_coherence_evals.py).
-"""
+"""The adjudication rules, one test per row of the table in
+docs/architecture.md. The LLM judge is mocked."""
 
 from uuid import uuid4
 

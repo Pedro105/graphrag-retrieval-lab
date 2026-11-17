@@ -1,11 +1,8 @@
-"""Integration test for the classifier wired into the recall path, against a
-real Neo4j instance.
+"""The classifier wired into recall, against Neo4j.
 
-No real LLM/embedding calls: a FakeEmbeddingProvider returns a fixed vector,
-and the three queries are deliberately ones the heuristic classifies with
-high confidence (used_llm must be False), so no Anthropic key is needed. The
-assertions are on how each query was *routed* (classifier_result), which the
-recall path now attaches to the response.
+The three queries are ones the rules classify confidently, so no LLM is
+called and no API key is needed. The assertions are on how each query was
+routed.
 """
 
 import uuid

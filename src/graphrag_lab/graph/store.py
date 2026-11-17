@@ -1,4 +1,4 @@
-"""Abstract interface for graph-backed persistence of memories, entities, and relations."""
+"""The interface the rest of the code uses to reach the graph database."""
 
 from abc import ABC, abstractmethod
 from uuid import UUID
@@ -11,68 +11,49 @@ from graphrag_lab.models.scope import Scope
 
 
 class GraphStore(ABC):
-    """Persists memories as entities and relations in a property graph.
+    """Entities and claims in a property graph, one isolated graph per tenant.
 
-    Concrete implementations are confined to `graph/`; callers elsewhere
-    interact only through this interface and `models/` types.
-
-    Every tenant is structurally separate, with its own vector and full-text
-    indexes (see `ensure_graph_initialized` and ADR 0004), so a vector search
-    never ranks another tenant's entities. `get_entity` and `delete_memory` take `tenant_id`
-    directly (rather than a full `Scope`) because they address a single
-    known id and only need to know which graph to look in.
+    Methods that search take a `Scope` and filter on all of its keys. Methods
+    that address one known id take just the `tenant_id`.
     """
 
     @abstractmethod
     async def ensure_graph_initialized(self, tenant_id: str, embedding_dimension: int) -> None:
-        """Ensure the tenant's graph exists and has its vector index set up.
-
-        Idempotent: safe to call on every write.
-        """
+        """Create the tenant's indexes if they are missing. Safe to call on
+        every write."""
 
     @abstractmethod
     async def write_memory(self, memory: Memory) -> str:
-        """Persist a memory's entities (MERGE by id). Returns the memory id.
-
-        Relations are NOT written here in the reified-claim model -- facts are
-        persisted as `:Claim` nodes via `upsert_claim`, after adjudication
-        (resolution/conflict_resolver.py) decides their status. The orchestrating
-        service writes entities first (so claim edges have endpoints), then
-        adjudicates and upserts each claim.
-        """
+        """Upsert the memory's entities and return the memory id. Facts are
+        written separately with `upsert_claim`, once adjudicated."""
 
     @abstractmethod
     async def find_active_claims(
         self, scope: Scope, subject_id: UUID, predicate: str
     ) -> list[FactClaim]:
-        """Active `:Claim` nodes with this subject and normalized predicate, in
-        `scope`'s tenant -- the conflict/corroboration candidates the adjudicator
-        weighs a new assertion against."""
+        """Active claims with this subject and normalized predicate: what a
+        new assertion is adjudicated against."""
 
     @abstractmethod
     async def upsert_claim(self, claim: FactClaim, memory_id: str) -> None:
-        """Create-or-update a `:Claim` node by id (status transitions reuse this)
-        and ensure its `:SUBJECT`/`:OBJECT` edges exist. Idempotent on the edges."""
+        """Create or update a claim by id and link it to its subject and
+        object. Status changes go through here too."""
 
     @abstractmethod
     async def project_display_edges(self, scope: Scope) -> list[Relation]:
-        """Every live (active/disputed) claim in `scope`'s tenant, collapsed into
-        display-edge `Relation`s. The single projection both GET /v1/graph and the
-        traversal path consume -- superseded/retracted claims are excluded."""
+        """Every live (active or disputed) claim as a subject -> object edge."""
 
     @abstractmethod
     async def find_predicates(self, scope: Scope) -> list[str]:
-        """Distinct raw predicates across the tenant's live claims (extraction
-        vocabulary bias). Replaces the old traverse-based relation-type scan."""
+        """Distinct raw predicates of the tenant's live claims."""
 
     @abstractmethod
     async def find_disputed_claims(self, scope: Scope) -> list[FactClaim]:
-        """All disputed `:Claim` nodes in `scope`'s tenant -- the unresolved
-        cross-asserter conflicts surfaced by GET /v1/conflicts."""
+        """All disputed claims in scope."""
 
     @abstractmethod
     async def get_entity(self, entity_id: UUID, tenant_id: str) -> Entity | None:
-        """Fetch a single entity by id, or None if it doesn't exist."""
+        """One entity by id, or None."""
 
     @abstractmethod
     async def find_entities(
@@ -81,7 +62,7 @@ class GraphStore(ABC):
         name: str | None = None,
         entity_type: str | None = None,
     ) -> list[Entity]:
-        """Find entities visible within `scope`, optionally filtered by name/type."""
+        """Entities in scope, optionally filtered by exact name and type."""
 
     @abstractmethod
     async def find_similar_entities(
@@ -91,12 +72,11 @@ class GraphStore(ABC):
         entity_type: str | None,
         k: int,
     ) -> list[tuple[Entity, float]]:
-        """Vector search for entities near `embedding` within `scope`'s tenant.
+        """The `k` nearest entities to `embedding` in the tenant, as (entity,
+        cosine similarity), most similar first.
 
-        Returns (entity, cosine similarity) pairs, most similar first, with 1
-        meaning identical. Implementations convert from their database's
-        native score. Filtered to `entity_type` and `Scope.includes` after
-        the tenant-scoped vector search.
+        Scope and type are filtered after the search, so fewer than `k` can
+        come back.
         """
 
     @abstractmethod
@@ -106,15 +86,11 @@ class GraphStore(ABC):
         query_text: str,
         limit: int,
     ) -> list[tuple[UUID, int]]:
-        """Full-text search for entities whose name matches `query_text`,
-        within `scope`'s tenant.
+        """Entities whose name matches `query_text`, as (entity_id, rank) with
+        rank 1 the best match.
 
-        Returns (entity_id, rank) pairs, best match first (rank 1 = best),
-        up to `limit` entities, filtered to `Scope.includes` in Python
-        after the search (same pragmatic simplification as
-        `find_similar_entities`). Returns an empty list -- never raises --
-        if the tenant's full-text index doesn't exist yet or `query_text`
-        sanitizes down to nothing.
+        Returns an empty list rather than raising when the tenant has no
+        index yet or the query has no searchable tokens.
         """
 
     @abstractmethod
@@ -125,51 +101,32 @@ class GraphStore(ABC):
         depth: int,
         max_entities: int = 200,
     ) -> tuple[list[Entity], list[Relation], bool]:
-        """Breadth-first multi-hop expansion from `seed_ids`, up to `depth`
-        hops, within `scope`'s tenant.
+        """Breadth-first expansion over live claims, `depth` hops from the seeds.
 
-        Returns the reachable subgraph as (entities, relations, truncated):
-        the seeds plus every entity reachable within `depth` undirected hops,
-        the relations among the returned entities, and a `truncated` flag set
-        True when the `max_entities` cap stopped expansion early (entity
-        count is then <= `max_entities`). This is the iterative-BFS traversal
-        used by the recall path; the older `traverse` remains for the
-        remember path and graph snapshot.
+        Returns (entities, relations, truncated): the seeds and everything
+        reached, the relations among them, and whether `max_entities` cut the
+        expansion short.
         """
 
     @abstractmethod
     async def delete_memory(self, memory_id: str, tenant_id: str) -> bool:
-        """Delete everything written by a given memory. Returns True if anything was deleted."""
+        """Delete the entities a memory created, with their claims. True if
+        anything was deleted."""
 
     @abstractmethod
     async def delete_entity(self, entity_id: UUID, tenant_id: str) -> bool:
-        """Hard-delete a single entity (and its incident relations) by id.
-
-        Addresses a tenant directly by id (like `get_entity`/`delete_memory`),
-        since it targets one known node. DETACH-deletes the node so its edges
-        go with it. Returns True if a node was deleted, False if no entity with
-        that id exists in the tenant's graph (the caller turns that into a 404).
-        Tenant-scoped by construction: an id belonging to another tenant isn't
-        in this tenant's graph, so it deletes nothing and returns False.
-        """
+        """Delete one entity and the claims attached to it. False if the
+        tenant has no such entity."""
 
     @abstractmethod
     async def graph_stats(self, tenant_id: str) -> tuple[int, int]:
-        """Return (entity_count, relation_count) for a tenant's graph.
-
-        Addresses a tenant directly by id (like `get_entity`/`delete_memory`),
-        Returns (0, 0) for a tenant whose graph has never been written to.
-        """
+        """(entity count, live claim count) for a tenant."""
 
     @abstractmethod
     async def drop_graph(self, tenant_id: str) -> None:
-        """Delete a tenant's entire graph (all entities, relations, indices).
-
-        Destructive -- used to reset a graph between experiment runs.
-        Idempotent: dropping an already-empty/absent graph is a no-op, not an
-        error.
-        """
+        """Delete everything a tenant owns, indexes included. A no-op for a
+        tenant that does not exist."""
 
     @abstractmethod
     async def health_check(self) -> bool:
-        """Return True if the underlying graph store is reachable."""
+        """True if the database is reachable."""

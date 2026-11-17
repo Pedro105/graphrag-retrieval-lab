@@ -1,13 +1,8 @@
-"""Cypher for the reified-claim model on Neo4j.
+"""All Cypher.
 
-Every node carries its type label (`:Entity` / `:Claim`) plus a per-tenant
-label (`:Tenant_<id>`, see ADR 0004). Queries are written against the
-placeholder `__T__`, which `neo4j_store.tenant_query` replaces with the
-validated tenant label -- labels and index names cannot be Cypher
+`__T__` stands for the tenant label and is filled in by
+`neo4j_store.tenant_query`, because labels and index names cannot be query
 parameters. Everything else is parameterized.
-
-Facts are reified: the predicate is a `:Claim` property, and the only
-relationship types are the fixed `:SUBJECT` / `:OBJECT`.
 """
 
 # --- schema (global, created once) -------------------------------------------
@@ -29,8 +24,7 @@ MATCH (n:Entity:__T__ {id: $id})
 CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
 """
 
-# Create-or-update a claim by id (status transitions reuse this) and ensure its
-# structural edges exist. MERGE on the edges keeps re-upserts idempotent.
+# Also used for status changes, hence MERGE on the edges.
 UPSERT_CLAIM = """
 MERGE (c:Claim {id: $id})
 SET c:__T__, c += $props
@@ -43,15 +37,13 @@ MERGE (c)-[:OBJECT]->(o)
 
 # --- claim reads -------------------------------------------------------------
 
-# Conflict/corroboration candidates: same subject and normalized predicate,
-# currently active. Disputed claims are not re-adjudicated.
+# Disputed claims are left out: they are not adjudicated again.
 FIND_ACTIVE_CLAIMS = """
 MATCH (c:Claim:__T__)-[:SUBJECT]->(:Entity {id: $subject_id})
 WHERE c.status = 'active' AND c.predicate = $predicate
 RETURN c
 """
 
-# Every live (active or disputed) claim: the single source of display edges.
 PROJECT_LIVE_CLAIMS = """
 MATCH (c:Claim:__T__)
 WHERE c.status IN ['active', 'disputed']
@@ -79,9 +71,7 @@ WHERE ($name IS NULL OR n.name = $name)
 RETURN n
 """
 
-# Cypher 25 SEARCH over the tenant's vector index (index names, like labels,
-# cannot be parameters: `__VINDEX__` is substituted after validation). Neo4j
-# reports cosine as (1 + cos) / 2 in [0, 1]; the store converts back.
+# `__VINDEX__` is the tenant's vector index name, substituted like `__T__`.
 VECTOR_SEARCH = """
 CYPHER 25
 MATCH (node:__T__)
@@ -96,9 +86,8 @@ RETURN node, score
 ORDER BY score DESC
 """
 
-# One BFS hop through live claims, a claim acting as an undirected logical edge
-# between its two entities. Already-visited neighbours are returned on purpose
-# so edges between known entities reach the result (see retrieval/traversal.py).
+# One hop: from each frontier entity, through a live claim, to the entity on
+# its other end. Visited neighbours are returned too (see traversal.py).
 FETCH_CLAIM_NEIGHBOURS = """
 MATCH (e:Entity:__T__)<-[:SUBJECT|OBJECT]-(c:Claim:__T__)-[:SUBJECT|OBJECT]->(n:Entity:__T__)
 WHERE e.id IN $frontier_ids AND c.status IN ['active', 'disputed'] AND n.id <> e.id
@@ -107,7 +96,7 @@ RETURN DISTINCT n, c
 
 # --- deletes and stats -------------------------------------------------------
 
-# Deleting an entity also deletes its incident claims, never leaving orphans.
+# A claim cannot outlive either of its entities.
 DELETE_ENTITY_WITH_CLAIMS = """
 MATCH (n:Entity:__T__ {id: $id})
 OPTIONAL MATCH (c:Claim)-[:SUBJECT|OBJECT]->(n)

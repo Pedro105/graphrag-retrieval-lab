@@ -72,10 +72,10 @@ def cache_key(
 
 
 class StructuredLLM:
-    """Instructor-backed structured generation with an optional disk cache.
+    """Structured generation through Instructor, with an optional disk cache.
 
-    `client` is injectable for tests; otherwise an Anthropic client is built
-    lazily on first uncached call, so cache-only runs need no API key.
+    The Anthropic client is built on the first uncached call, so a fully
+    cached run needs no API key.
     """
 
     def __init__(
@@ -121,9 +121,7 @@ class StructuredLLM:
         if path is None:
             return
         record = {"model": model, "tokens": tokens, "value": value.model_dump(mode="json")}
-        # Best-effort: the response has already been paid for, so a cache
-        # failure (read-only or full disk) must not discard it and fail the
-        # request -- the caller would retry and pay for the same call again.
+        # A failed write must not lose a response that was already paid for.
         tmp: str | None = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +173,6 @@ class StructuredLLM:
 
 @lru_cache
 def get_llm() -> StructuredLLM:
-    """Process-wide StructuredLLM configured from settings."""
     settings = get_settings()
     cache_dir = settings.llm_cache_dir if settings.llm_cache_enabled else None
     return StructuredLLM(cache_dir=cache_dir, temperature=settings.llm_temperature)

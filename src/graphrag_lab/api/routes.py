@@ -1,18 +1,14 @@
-"""v1 API routes: ingest (remember), query (recall), and graph inspection.
+"""API routes: ingest, recall, and looking at what is in the graph.
 
-There is no authentication: this is a local research service. Every request
-names the graph it operates on via `tenant_id` (default "default"); each
-tenant is structurally separate in Neo4j (see docs/decisions/0004).
-Callers may add other scope keys (user_id, project, ...) via `extra_scope`,
-used for in-graph filtering (Scope.includes).
+There is no authentication; this is a local research service. Each request
+names its graph with `tenant_id`, and may narrow further with `extra_scope`.
 """
 
 from datetime import datetime
-from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field
 
 from graphrag_lab.api.dependencies import EmbeddingProviderDep, GraphStoreDep
 from graphrag_lab.core.service import recall as recall_service
@@ -29,23 +25,15 @@ router = APIRouter(prefix="/v1")
 DEFAULT_TENANT = "default"
 _TENANT_PATTERN = r"^[A-Za-z0-9_-]+$"
 
-# tenant_id becomes part of a Neo4j label and two index names; keep it short.
-_TENANT_MAX_LENGTH = 40
-
-# Request-size ceilings. Every one of these feeds an LLM prompt (extraction,
-# classifier, synthesis) or a graph traversal, so without an upper bound a
-# single request can cost arbitrarily many tokens or pull the whole graph.
+# Bounds on what one request can ask for, to catch mistakes such as a depth of
+# 50 before they reach the LLM or the database.
 MAX_CONTENT_CHARS = 20_000
 MAX_QUERY_CHARS = 2_000
-MAX_SOURCE_CHARS = 200
-MAX_EVIDENCE_ITEMS = 50
-MAX_EVIDENCE_CHARS = 2_000
-MAX_SCOPE_KEYS = 16
 MAX_SEED_LIMIT = 100
 MAX_TRAVERSAL_DEPTH = 5
-MAX_ENTITIES_CAP = 1_000
+MAX_ENTITIES = 1_000
 
-TenantQuery = Query(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN, max_length=_TENANT_MAX_LENGTH)
+TenantQuery = Query(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN)
 
 
 def _build_scope(tenant_id: str, extra_scope: dict[str, ScopeValue]) -> Scope:
@@ -55,27 +43,18 @@ def _build_scope(tenant_id: str, extra_scope: dict[str, ScopeValue]) -> Scope:
 
 
 class ScopedRequest(BaseModel):
-    tenant_id: str = Field(
-        default=DEFAULT_TENANT, pattern=_TENANT_PATTERN, max_length=_TENANT_MAX_LENGTH
-    )
+    tenant_id: str = Field(default=DEFAULT_TENANT, pattern=_TENANT_PATTERN)
     extra_scope: dict[str, ScopeValue] = Field(
         default_factory=dict,
-        max_length=MAX_SCOPE_KEYS,
         description="Optional extra scope keys (e.g. user_id, project) within the graph.",
     )
 
 
 class RememberRequest(ScopedRequest):
     content: str = Field(min_length=1, max_length=MAX_CONTENT_CHARS)
-    source: str = Field(
-        min_length=1,
-        max_length=MAX_SOURCE_CHARS,
-        description="Who asserted this (agent / document id).",
-    )
+    source: str = Field(min_length=1, description="Who asserted this (agent / document id).")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    evidence: list[Annotated[str, StringConstraints(max_length=MAX_EVIDENCE_CHARS)]] | None = Field(
-        default=None, max_length=MAX_EVIDENCE_ITEMS
-    )
+    evidence: list[str] | None = None
 
 
 class RecallRequest(ScopedRequest):
@@ -94,7 +73,7 @@ class RecallRequest(ScopedRequest):
         description="Seeding method: vector, fulltext or hybrid. Unset: the classifier chooses.",
     )
     max_entities: int = Field(
-        default=200, ge=1, le=MAX_ENTITIES_CAP, description="Hard cap on traversal size."
+        default=200, ge=1, le=MAX_ENTITIES, description="Hard cap on traversal size."
     )
     synthesise: bool = Field(default=False, description="Also generate a prose answer.")
 

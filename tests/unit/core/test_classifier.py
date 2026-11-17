@@ -1,9 +1,4 @@
-"""Unit tests for the query classifier.
-
-HeuristicClassifier is pure (no I/O), so its tests are plain assertions.
-The threshold/LLM-fallback tests mock LLMClassifier so no real Anthropic
-call happens.
-"""
+"""The query classifier. The LLM stage is mocked."""
 
 from unittest.mock import AsyncMock
 

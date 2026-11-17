@@ -1,14 +1,5 @@
-"""Integration test for recall synthesis against the live eval_test graph.
-
-Runs recall(synthesise=True) over an exact-lookup, a single-hop, and a
-relational (2-hop) query and asserts each produces a non-empty, non-empty-data
-prose answer. For the relational case, asserts at least one of the engineered
-2-hop chain entities appears in grounded_entity_ids.
-
-Skips gracefully if Neo4j isn't reachable, eval_test hasn't been seeded, or
-the real LLM/embedding calls fail (missing/invalid API keys) -- same pattern as
-test_remember_recall_e2e.py and test_multihop_traversal.py.
-"""
+"""Synthesis over the eval_test graph for a lookup, a single-hop and a two-hop
+query. Skips if eval_test has not been populated or there is no API key."""
 
 import pytest
 

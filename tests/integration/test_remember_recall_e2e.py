@@ -1,10 +1,5 @@
-"""End-to-end test of the write/read core engine: real Claude (extraction),
-local embeddings, real Neo4j (graph + vector index).
-
-Skips gracefully if Neo4j isn't reachable, or if the real LLM/embedding
-calls fail (e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY missing or invalid) --
-an "attempt and skip on failure" pattern.
-"""
+"""Write then read through the whole pipeline: real extraction, local
+embeddings, Neo4j. Skips without an API key."""
 
 import pytest
 

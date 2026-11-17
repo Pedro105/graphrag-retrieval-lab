@@ -1,7 +1,5 @@
-"""The assertion-semantics fields on ExtractedRelation: schema defaults,
-backward compatibility, and that they stay off the display Relation model
-(they feed claim adjudication instead). No API key needed.
-"""
+"""The assertion fields on ExtractedRelation: their defaults, and that they
+feed adjudication without leaking onto the display Relation."""
 
 from uuid import uuid4
 

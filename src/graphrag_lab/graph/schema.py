@@ -1,11 +1,9 @@
-"""(De)serialization between pydantic models and Neo4j node properties.
+"""Conversion between models and Neo4j node properties.
 
-Neo4j properties may be scalars, temporal values, or homogeneous lists of
-those, but not maps. So lists (asserted_by, observed_types, ...) and
-timestamps are stored natively -- queryable in Cypher, e.g. claims valid at a
-given time -- while genuinely nested structures (free-form properties,
-property-claim history, scope, provenance) are stored as JSON strings in
-`*_json` properties.
+Neo4j properties can be scalars, dates and flat lists, but not maps. Lists
+and timestamps are stored natively so Cypher can query them; nested values
+(free-form properties, claim history, scope, provenance) go in `*_json`
+string properties.
 """
 
 import json
@@ -22,7 +20,7 @@ from graphrag_lab.models.scope import Scope
 
 
 def to_datetime(value: Any) -> datetime:
-    """Neo4j returns its own DateTime type; normalize to a native datetime."""
+    """Neo4j returns its own DateTime type."""
     if isinstance(value, datetime):
         return value
     if hasattr(value, "to_native"):
@@ -43,8 +41,7 @@ def _claims_from_json(raw: str | None) -> list[Claim]:
 
 
 def entity_to_node_props(entity: Entity, memory_id: str) -> dict[str, Any]:
-    """Entity properties except `id` (the MERGE key) and `embedding` (written
-    separately through the vector-property procedure)."""
+    """Everything but `id` (the MERGE key) and `embedding` (set separately)."""
     return {
         "name": entity.name,
         "entity_type": entity.entity_type,
@@ -77,8 +74,7 @@ def node_to_entity(props: dict[str, Any]) -> Entity:
 
 
 def claim_to_node_props(claim: FactClaim, memory_id: str) -> dict[str, Any]:
-    """Claim properties except `id`. `valid_to` is set to null when open, which
-    removes the property in Neo4j and reads back as None."""
+    """Everything but `id`. A null `valid_to` removes the property."""
     return {
         "predicate": claim.predicate,
         "raw_predicate": claim.raw_predicate,
@@ -128,9 +124,7 @@ def node_to_claim(props: dict[str, Any]) -> FactClaim:
 
 
 def claim_to_relation(claim: FactClaim) -> Relation:
-    """Collapse a live claim into a directed display edge (subject -> object,
-    raw predicate as relation_type) -- the one place the reified model is
-    turned back into a simple edge for callers."""
+    """A claim as a plain subject -> object edge, for callers that want a graph."""
     asserter = claim.asserted_by[0] if claim.asserted_by else "unknown"
     return Relation(
         id=claim.id,

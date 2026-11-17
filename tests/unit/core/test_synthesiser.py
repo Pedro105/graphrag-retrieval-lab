@@ -1,11 +1,4 @@
-"""Unit tests for RecallSynthesiser and subgraph serialisation, fully mocked
-(no real LLM calls).
-
-Covers: a successful synthesis (answer populated, grounded ids filtered to the
-real subgraph), the empty-subgraph short-circuit (insufficient_data, no LLM
-call), the compact serialisation (entity/relation/conflict rendering), and
-graceful degradation when synthesis raises inside recall().
-"""
+"""Synthesis and the subgraph text sent to the model. The LLM is mocked."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock

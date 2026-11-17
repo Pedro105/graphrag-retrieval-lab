@@ -1,20 +1,13 @@
-"""Regression test for a duplicate-edge bug found via manual dogfooding:
-writing the same relation between the same two (already-resolved) entities
-via two separate remember() calls produced two edges instead of one.
+"""Stating the same fact twice, in different words and in separate writes,
+must leave one claim with a support count of two, not two parallel edges.
 
-Relations are now deduplicated at write time via MERGE keyed on
-(source_entity_id, target_entity_id, relation_type) -- see
-resolution/conflict_resolver.py. This test encodes the exact
-scenario: two independently-phrased sentences that each state the same
-fact about the same two entities.
-
-Uses real Claude (extraction) + local embeddings + real Neo4j,
-same "attempt and skip on failure" pattern as the other E2E tests.
+Uses real extraction, so it skips without an Anthropic key.
 """
 
 import pytest
 
 from graphrag_lab.core.config import get_settings
+from graphrag_lab.graph import queries
 from graphrag_lab.core.service import remember
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.vector.embeddings import build_embedding_provider
@@ -56,35 +49,19 @@ async def test_repeated_relation_between_same_entities_merges_not_duplicates(
     }
     asml_ids = {e.id for m in (memory_1, memory_2) for e in m.entities if "asml" in e.name.lower()}
 
-    print(f"\nPedro entity ids across both writes: {pedro_ids}")
-    print(f"ASML entity ids across both writes: {asml_ids}")
-
-    # Entity resolution should have converged each name onto a single entity
-    # across both independent writes -- a precondition for this test to mean
-    # anything (the bug being tested is about the relation edge, not entities).
+    # Both writes must resolve to the same two entities, or the claim check
+    # below means nothing.
     assert len(pedro_ids) == 1, f"expected Pedro to resolve to one entity, got {pedro_ids}"
     assert len(asml_ids) == 1, f"expected ASML to resolve to one entity, got {asml_ids}"
 
     pedro_id = next(iter(pedro_ids))
     asml_id = next(iter(asml_ids))
 
-    # In the reified-claim model the same fact asserted twice corroborates into
-    # ONE :Claim node (support_count 2), not two -- the adjudicator's row 3.
-    graph = graph_store._graph_for(tenant_id)
-    result = await graph.query(
-        "MATCH (c:Claim)-[:SUBJECT]->(:Entity {id: $pedro}) "
-        "MATCH (c)-[:OBJECT]->(:Entity {id: $asml}) "
-        "WHERE c.status = 'active' "
-        "RETURN c.predicate, c.support_count, c.id",
-        {"pedro": str(pedro_id), "asml": str(asml_id)},
-    )
-
-    print(f"Claims between Pedro and ASML: {result.result_set}")
-
-    assert len(result.result_set) == 1, (
-        f"expected exactly one active claim between Pedro and ASML after two writes "
-        f"of the same fact, found {len(result.result_set)}: {result.result_set}"
-    )
-    predicate, support_count, _claim_id = result.result_set[0]
-    print(f"Predicate: {predicate!r}, support_count: {support_count}")
-    assert support_count == 2
+    claims = [
+        claim
+        for claim in await graph_store._claims(queries.PROJECT_LIVE_CLAIMS, scope)
+        if claim.subject_id == pedro_id and claim.object_id == asml_id
+    ]
+    assert len(claims) == 1, f"expected one claim between Pedro and ASML, got {claims}"
+    assert claims[0].status == "active"
+    assert claims[0].support_count == 2

@@ -1,35 +1,10 @@
-"""Eval harness: run dataset.yaml's cases against a live POST /v1/recall and
-report hit rates, overall and per category.
+"""Run the cases in dataset.yaml against a live POST /v1/recall and report
+hit rates per category. The checks a case can declare are listed in README.md;
+a case is a hit only if all of them pass.
 
-Checks per case, all optional except entity presence:
-  - entity presence:    every name in expected_entities appears in the result
-  - property values:    expected_properties[entity][property] == actual value
-  - relation values:    expected_relations[i] resolves to a real edge in the
-                         result with the expected property value
-  - forbidden entities:  none of forbidden_entities appears in the result
-                         (cluster-isolation cases)
-  - claim history:      expected_claim_history[entity] resolves to the right
-                         sequence of claims, including supersession
-                         (provenance-arbitration cases)
-
-A case is a hit only if every check it declares passes. property/relation/
-claim checks report actual vs. expected on mismatch, not just pass/fail --
-that's the point of this extension (see README.md for why presence-only
-checks missed a real bug). See README.md for how to add cases.
-
-Per-case `limit` and `traversal_depth` override the --limit/--traversal-depth
-CLI defaults (see dataset.yaml's bridging cases for why per-case `limit` is
-needed: approximate (HNSW) vector search can under-return at small k on small graphs, so the
-seed-friendly k differs per query on this graph size).
-
-category: bridging is special-cased: the runner automatically runs the case
-TWICE -- once at traversal_depth=1 (control, `bridge_target` must be ABSENT)
-and once at traversal_depth=2 (target, normal entity-presence hit check,
-`bridge_target` must be PRESENT) -- and reports both rows. This is automatic
-based on category alone; bridging cases in dataset.yaml don't (and shouldn't)
-set their own traversal_depth. A bridging case that finds bridge_target at
-depth=1 is a poorly engineered case, not a passing one -- the control row's
-hit reflects that directly.
+`bridging` cases run twice: at depth 1, where `bridge_target` must be absent,
+and at depth 2, where it must be present. A target found at depth 1 means the
+case is badly built, and the depth-1 row shows it as a miss.
 """
 
 import argparse

@@ -1,16 +1,13 @@
-"""Neo4j implementation of the GraphStore interface.
+"""GraphStore on Neo4j.
 
-Schema (reified claims): `(:Claim)-[:SUBJECT]->(:Entity)` and
-`(:Claim)-[:OBJECT]->(:Entity)`; the predicate and the claim's coherence state
-(status, validity window, asserters, supersession, disputes) are properties of
-the `:Claim` node. Cypher lives in graph/queries.py, (de)serialization in
+Facts are `:Claim` nodes: `(:Claim)-[:SUBJECT]->(:Entity)` and
+`(:Claim)-[:OBJECT]->(:Entity)`, with the predicate and status as properties.
+Cypher is in graph/queries.py, conversion to and from models in
 graph/schema.py.
 
-Tenant isolation (ADR 0004): Neo4j Community has a single database, so each
-tenant is a label, `:Tenant_<id>`, on every node it owns, with its own vector
-and full-text index over that label. A vector search therefore only ever
-ranks one tenant's entities, keeping isolation structural rather than a
-post-filter on a shared top-k.
+Neo4j Community has one database, so a tenant is a label, `:Tenant_<id>`, on
+every node it owns, with its own vector and full-text index (ADR 0004). A
+vector search therefore ranks one tenant's entities and nothing else.
 """
 
 import re
@@ -46,16 +43,15 @@ logger = structlog.get_logger()
 
 _SAFE_TENANT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _FULLTEXT_TOKEN = re.compile(r"[A-Za-z0-9]+")
-# Bare uppercase AND / OR / NOT are Lucene operators even with no punctuation.
 _LUCENE_OPERATORS = frozenset({"AND", "OR", "NOT"})
-# Lucene rejects a boolean query with more than 1024 clauses.
+# Lucene refuses a query with more than 1024 clauses.
 _MAX_FULLTEXT_TOKENS = 256
 _DELETE_BATCH = 5_000
 
 
 def tenant_label(tenant_id: str) -> str:
-    """Backtick-quoted per-tenant label. tenant_id is validated against a
-    strict charset because labels cannot be passed as Cypher parameters."""
+    """The tenant's label, backtick-quoted. Labels cannot be query parameters,
+    so the id is checked against a strict character set first."""
     if not _SAFE_TENANT_ID.match(tenant_id):
         raise ValueError(f"tenant_id {tenant_id!r} must match ^[A-Za-z0-9_-]+$")
     return f"`Tenant_{tenant_id}`"
@@ -76,15 +72,11 @@ def fulltext_index_name(tenant_id: str) -> str:
 
 
 def sanitize_fulltext_query(query_text: str) -> str:
-    """Reduce free text to alphanumeric tokens OR-ed together. Lucene treats
-    punctuation as syntax (`-` is NOT, `:` is a field selector), so a raw name
-    like "RG-88" would otherwise parse as "RG NOT 88" and match nothing.
+    """Reduce free text to alphanumeric tokens joined with OR.
 
-    A token that is itself an operator word ("what is NOT covered") is
-    lowercased, which makes it a plain term (the index analyzer lowercases
-    anyway); left as-is it would negate the next token or fail to parse.
-    Repeated tokens are dropped and the count is capped to stay under Lucene's
-    clause limit -- both failures surface as "no full-text results".
+    Lucene reads punctuation as syntax, so a raw "RG-88" means "RG NOT 88"
+    and matches nothing. An uppercase AND/OR/NOT is an operator as well and
+    is lowercased into an ordinary word.
     """
     tokens: dict[str, None] = {}
     for token in _FULLTEXT_TOKEN.findall(query_text):
@@ -95,8 +87,7 @@ def sanitize_fulltext_query(query_text: str) -> str:
 
 
 def cosine_from_neo4j_score(score: float) -> float:
-    """Neo4j's cosine vector score is (1 + cos) / 2, mapped into [0, 1]; the
-    rest of the system (resolution thresholds) works in plain cosine."""
+    """Neo4j reports cosine similarity as (1 + cos) / 2. Convert it back."""
     return 2.0 * score - 1.0
 
 
@@ -116,8 +107,8 @@ class Neo4jGraphStore(GraphStore):
         database: str = "neo4j",
         driver: AsyncDriver | None = None,
     ) -> None:
-        # Silence "unknown label/property" notices: an empty tenant legitimately
-        # has no :Claim nodes or status properties yet.
+        # An empty tenant has no :Claim nodes yet, which Neo4j would warn about
+        # on every query.
         self._driver = driver or AsyncGraphDatabase.driver(
             uri,
             auth=(user, password),
@@ -167,7 +158,7 @@ class Neo4jGraphStore(GraphStore):
                     "drop the graph or switch providers"
                 )
         else:
-            # Index DDL takes no parameters; the dimension is a validated int.
+            # Index DDL takes no parameters.
             await self._run(
                 f"CREATE VECTOR INDEX `{vector_index}` IF NOT EXISTS "
                 f"FOR (n:{label}) ON n.embedding "
@@ -178,15 +169,13 @@ class Neo4jGraphStore(GraphStore):
             f"CREATE FULLTEXT INDEX `{fulltext_index_name(tenant_id)}` IF NOT EXISTS "
             f"FOR (n:{label}) ON EACH [n.name]"
         )
-        # New indexes populate asynchronously; queries fail until they are online.
+        # Queries against an index fail until it has finished building.
         await self._run("CALL db.awaitIndexes(120)")
         self._initialized.add(tenant_id)
 
     # --- writes --------------------------------------------------------------
 
     async def write_memory(self, memory: Memory) -> str:
-        """Persist the memory's entities. Facts are written separately as
-        adjudicated claims via `upsert_claim`."""
         memory_id = str(memory.id)
         tenant_id = memory.scope.tenant_id
         for entity in memory.entities:
@@ -284,7 +273,7 @@ class Neo4jGraphStore(GraphStore):
             )
         except ClientError as exc:
             if _is_missing_index(exc):
-                return []  # nothing written to this tenant yet
+                return []  # nothing has been written to this tenant
             raise
         matches: list[tuple[Entity, float]] = []
         for record in result.records:
@@ -331,8 +320,7 @@ class Neo4jGraphStore(GraphStore):
         depth: int,
         max_entities: int = 200,
     ) -> tuple[list[Entity], list[Relation], bool]:
-        """BFS with one batched Cypher query per hop; the bookkeeping lives in
-        retrieval/traversal.py."""
+        """One Cypher query per hop; the BFS itself is in retrieval/traversal.py."""
         tenant_id = scope.tenant_id
 
         async def fetch_seeds(ids: list[str]) -> list[Entity]:
@@ -348,10 +336,8 @@ class Neo4jGraphStore(GraphStore):
             for record in result.records:
                 neighbour = node_to_entity(dict(record["n"]))
                 claim = node_to_claim(dict(record["c"]))
-                # The claim is filtered as well as the neighbour, the same rule
-                # `_claims` applies everywhere else: an edge outside the
-                # caller's scope must not be walked or returned just because
-                # both of its endpoints happen to be visible.
+                # An edge outside the caller's scope is not walked, even if
+                # both of its ends are visible.
                 if scope.includes(neighbour.scope) and scope.includes(claim.scope):
                     pairs.append((neighbour, claim_to_relation(claim)))
             return pairs

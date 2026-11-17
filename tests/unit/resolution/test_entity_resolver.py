@@ -78,8 +78,7 @@ async def test_at_or_above_merge_threshold_merges_into_existing_entity():
 
     result = await resolve_entity(EXTRACTED, SCOPE, PROVENANCE, graph_store, embedding_provider)
 
-    # Identity is preserved, but the merge is no longer a silent no-op: the
-    # new write's touch is recorded as a claim, not discarded.
+    # Same entity, plus a claim recording that this source mentioned it.
     assert result.id == existing.id
     assert result.name == existing.name
     assert result.embedding == existing.embedding
@@ -150,9 +149,8 @@ async def test_threshold_boundaries(score, expect_reuse):
 
 
 async def test_same_name_different_case_merges_despite_subthreshold_score():
-    # Regression: 'Ada Lovelace' vs 'Ada lovelace' embeds at ~0.90 cosine,
-    # below the 0.92 merge threshold, so vector score alone would create a
-    # duplicate. An exact normalized-name match must force the merge.
+    # 0.90 is the real similarity of these two strings, under the 0.92 merge
+    # threshold. The name match has to carry the merge.
     existing = make_existing_entity(name="Ada Lovelace")
     graph_store, embedding_provider = make_mocks([(existing, 0.9019)])
     extracted = ExtractedEntity(name="Ada lovelace", entity_type="person")
@@ -189,8 +187,6 @@ async def test_name_match_beats_a_higher_scored_different_name_candidate():
 
 
 async def test_embeds_name_only_not_type():
-    # The type is no longer baked into the embedding (it pushed
-    # surface-identical entities of different types apart); name only.
     graph_store, embedding_provider = make_mocks([])
 
     await resolve_entity(EXTRACTED, SCOPE, PROVENANCE, graph_store, embedding_provider)
@@ -199,8 +195,7 @@ async def test_embeds_name_only_not_type():
 
 
 async def test_searches_without_a_hard_type_filter():
-    # Resolution now passes entity_type=None so the store returns cross-type
-    # candidates; type is reconciled by the resolver, not partitioned on.
+    # Candidates of every type are fetched; the resolver weighs type itself.
     graph_store, embedding_provider = make_mocks([])
 
     await resolve_entity(EXTRACTED, SCOPE, PROVENANCE, graph_store, embedding_provider)
@@ -212,30 +207,26 @@ async def test_searches_without_a_hard_type_filter():
     assert args[2] is None
 
 
-# --- type is a soft signal, not a hard partition ------------------------------
+# --- type is a tiebreaker, not a filter
 
 
 async def test_same_name_different_type_merges_into_one_node():
-    """Acceptance (Symptom 1): "Acme" the Organization and "Acme" the Product
-    resolve to a SINGLE entity, with both types recorded -- not two forked
-    nodes. The exact-name fast path now crosses entity types."""
+    """ "Acme" the Organization and "Acme" the Product become one entity with
+    both types recorded."""
     existing = make_existing_entity(
         name="Acme", entity_type="Organization", observed_types=["Organization"]
     )
-    # High vector score (name-only embeddings of "Acme" vs "Acme" are near).
     graph_store, embedding_provider = make_mocks([(existing, 0.97)])
     extracted = ExtractedEntity(name="Acme", entity_type="Product")
 
     result = await resolve_entity(extracted, SCOPE, PROVENANCE, graph_store, embedding_provider)
 
-    assert result.id == existing.id  # merged, not forked
-    assert result.entity_type == "Organization"  # canonical/first-writer stays stable
-    assert set(result.observed_types) == {"Organization", "Product"}  # disagreement recorded
+    assert result.id == existing.id
+    assert result.entity_type == "Organization"  # the first type seen is kept
+    assert set(result.observed_types) == {"Organization", "Product"}
 
 
 async def test_same_name_different_type_merges_even_below_vector_threshold():
-    """The cross-type merge does not depend on a high vector score -- the
-    exact-name match forces it even when the embedding falls well short."""
     existing = make_existing_entity(
         name="Acme", entity_type="Organization", observed_types=["Organization"]
     )
@@ -249,12 +240,9 @@ async def test_same_name_different_type_merges_even_below_vector_threshold():
 
 
 async def test_different_name_different_type_stays_separate():
-    """Regression: dropping the type partition must not over-merge. A genuinely
-    different entity (different name) of a different type stays its own node."""
     existing = make_existing_entity(
         name="Acme", entity_type="Organization", observed_types=["Organization"]
     )
-    # Different name, only a weak vector neighbour -> no merge.
     graph_store, embedding_provider = make_mocks([(existing, 0.55)])
     extracted = ExtractedEntity(name="Globex", entity_type="Product")
 

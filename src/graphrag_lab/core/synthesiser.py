@@ -1,17 +1,9 @@
-"""Recall synthesis: turn a structured RecallResult into a prose answer
-grounded strictly in the retrieved subgraph.
+"""Turn a recall result into a prose answer grounded in the retrieved subgraph.
 
-Optional and additive -- only runs when recall() is called with
-synthesise=True, and never replaces the structured entities/relations (see
-models/recall.py's RecallResult.synthesis). Structured output via
-llm/client.py, like extraction and the classifier.
-
-The subgraph is serialised into a compact text representation (not raw JSON,
-not a full Pydantic dump) by `serialise_subgraph` -- a pure, independently
-testable function. Active claim values are surfaced as current facts; where a
-property's history shows a superseded claim with a different value, the
-conflict is surfaced explicitly so the model can flag it rather than silently
-present a stale value as current.
+Runs only when recall is called with synthesise=True. The subgraph is sent to
+the model as compact text, one line per entity and per relation, with a note
+wherever a property changed value over time so the model can say so instead
+of quoting a stale value as current.
 """
 
 from collections import defaultdict
@@ -67,18 +59,8 @@ for a clean, complete, high-confidence answer.\
 def _summarise_claims(
     claims: list[Claim], fallback_properties: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
-    """Return (active property values, conflict notes) for one entity/relation.
-
-    Active values come from the claim history's latest-wins view
-    (derive_active_view). A conflict note is emitted for any property whose
-    history contains a superseded claim with a value different from the active
-    one -- this is the seam that lets the prompt flag "source A says X, source
-    B (superseded) said Y" instead of silently presenting only X.
-
-    Falls back to `fallback_properties` when there is no claim history (which
-    shouldn't happen for graph-written entities, but keeps this robust for
-    hand-built RecallResults).
-    """
+    """Current property values plus a note for each property whose history
+    holds a superseded claim with a different value."""
     if not claims:
         return dict(fallback_properties), []
 
@@ -152,13 +134,8 @@ def _relation_lines(relation: Relation, names_by_id: dict[UUID, str]) -> list[st
 
 
 def serialise_subgraph(result: RecallResult) -> str:
-    """Compact, readable text representation of a RecallResult for the prompt.
-
-    Not JSON and not a full Pydantic dump -- one line per entity (with its
-    bracketed id so the model can cite it into grounded_entity_ids) and one
-    line per relation (referencing entities by name), with active property
-    values, contributing sources, and any conflict notes.
-    """
+    """The prompt body. Entity lines carry the id in brackets so the model
+    can cite it in `grounded_entity_ids`."""
     names_by_id = {entity.id: entity.name for entity in result.entities}
 
     lines = [f"QUERY: {result.query}", "", "ENTITIES:"]
@@ -179,9 +156,6 @@ def serialise_subgraph(result: RecallResult) -> str:
 
 
 class RecallSynthesiser:
-    """Synthesise a prose answer from a RecallResult. `llm` is injectable so
-    unit tests run fully offline."""
-
     def __init__(self, llm: StructuredLLM | None = None) -> None:
         self._llm = llm
 
@@ -191,9 +165,7 @@ class RecallSynthesiser:
         result: RecallResult,
         scope: Scope,
     ) -> SynthesisResult:
-        # No retrieved entities -> nothing to ground an answer in. Short-circuit
-        # without an LLM call: the contract is "never hallucinate when the graph
-        # has no relevant data", and an empty subgraph is exactly that case.
+        # Nothing retrieved, nothing to ground an answer in: skip the LLM.
         if not result.entities:
             return SynthesisResult(
                 answer="The retrieved memory does not contain information to answer this query.",
@@ -212,8 +184,7 @@ class RecallSynthesiser:
         )
         synthesis = response.value
 
-        # Keep only ids the model cited that actually exist in the subgraph, so
-        # grounding can't reference an entity that wasn't retrieved.
+        # Drop any cited id that is not in the subgraph.
         valid_ids = {str(entity.id) for entity in result.entities}
         synthesis.grounded_entity_ids = [
             entity_id for entity_id in synthesis.grounded_entity_ids if entity_id in valid_ids

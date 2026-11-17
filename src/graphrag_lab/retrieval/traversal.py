@@ -1,19 +1,8 @@
-"""Breadth-first multi-hop traversal over the knowledge graph.
+"""Breadth-first traversal, kept free of any database code.
 
-The BFS bookkeeping -- frontier expansion hop by hop, visited-id tracking,
-the `max_entities` hard cap, and the end-of-run relation filtering -- lives
-here as a pure async function, decoupled from the database via two injected
-fetch callables. `graph/neo4j_store.py`'s `traverse_from_seeds` supplies
-the real Cypher-backed fetchers (one batched query per hop); tests supply
-in-memory ones. Keeping the algorithm out of the store is what makes it
-unit-testable without a live database, and keeps the store responsible only
-for Cypher.
-
-Traversal is undirected (matches the existing one-hop `traverse`): a
-neighbour reached over an incoming or outgoing edge is treated the same. A
-relation's own `source_entity_id`/`target_entity_id` (from stored edge
-properties) preserve the real direction regardless of which way it was
-walked.
+The store passes in two fetch functions (one batched Cypher query per hop)
+and tests pass in-memory ones. Traversal is undirected; each relation still
+records its real direction.
 """
 
 from collections.abc import Awaitable, Callable
@@ -26,20 +15,11 @@ from graphrag_lab.models.relation import Relation
 
 logger = structlog.get_logger()
 
-# Fetch the seed Entity objects for the given ids (already scope-filtered by
-# the caller). A seed with no matching/visible row is simply absent.
 SeedFetcher = Callable[[list[str]], Awaitable[list[Entity]]]
 
-# Fetch one hop out: every (neighbour, connecting_relation) pair for *all*
-# edges incident to any frontier id -- including edges whose neighbour was
-# already visited. Returning already-visited neighbours is deliberate: it's
-# how edges *between* already-discovered entities (notably the seeds, which
-# are all "visited" from the first hop) make it into the result. Without it,
-# a recall whose seeds are interconnected returns those entities but none of
-# the edges connecting them. Frontier expansion is decided separately by the
-# BFS itself (an already-known neighbour is recorded but not re-expanded), so
-# the fetcher does not need a visited set. A neighbour reachable by several
-# edges yields several pairs; dedup happens here, not in the fetcher.
+# Returns (neighbour, relation) for every edge touching the frontier, including
+# edges to entities already visited. Leaving those out would lose the edges
+# between two seeds, since seeds are visited before the first hop.
 NeighbourFetcher = Callable[[list[str]], Awaitable[list[tuple[Entity, Relation]]]]
 
 
@@ -52,15 +32,11 @@ async def breadth_first_traverse(
     *,
     tenant_id: str,
 ) -> tuple[list[Entity], list[Relation], bool]:
-    """BFS up to `depth` hops from `seed_ids`, returning the reachable
-    subgraph as (entities, relations, truncated).
+    """Expand `depth` hops out from the seeds.
 
-    The seeds themselves are part of the returned subgraph (depth=1 from A
-    returns {A} plus A's neighbours). `truncated` is True iff the
-    `max_entities` cap stopped expansion before the graph or depth was
-    exhausted; the returned entity count is then <= `max_entities`.
-    Relations are filtered so both endpoints are present in the returned
-    entity set.
+    Returns (entities, relations, truncated). The seeds are included, at most
+    `max_entities` entities come back, and only relations with both ends in
+    the result are kept.
     """
     if depth < 1:
         raise ValueError("depth must be >= 1")
@@ -72,8 +48,7 @@ async def breadth_first_traverse(
     truncated = False
 
     def _add_entity(entity: Entity) -> bool:
-        """Add an entity if new and under the cap. Returns False (and flips
-        `truncated`) if the cap is already reached, so callers can stop."""
+        """False once the cap is reached and the entity could not be added."""
         nonlocal truncated
         entity_id = str(entity.id)
         if entity_id in entities_by_id:
@@ -84,7 +59,6 @@ async def breadth_first_traverse(
         entities_by_id[entity_id] = entity
         return True
 
-    # Seeds first: they anchor the subgraph and form the initial frontier.
     frontier: list[str] = []
     for seed in await fetch_seeds(seed_ids):
         if _add_entity(seed):
@@ -97,8 +71,6 @@ async def breadth_first_traverse(
         rows = await fetch_neighbours(frontier)
         next_frontier: list[str] = []
         for neighbour, relation in rows:
-            # Record every encountered edge; relations touching a neighbour
-            # that ends up truncated away are dropped by the final filter.
             relations_by_id[relation.id] = relation
             neighbour_id = str(neighbour.id)
             already_known = neighbour_id in entities_by_id

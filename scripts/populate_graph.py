@@ -1,38 +1,22 @@
-"""Populate tenant `eval_test` with a 3-cluster graph for the eval harness.
+"""Populate the `eval_test` graph with three unrelated clusters for the smoke eval.
 
-Run against a live backend:
+    uv run python scripts/populate_graph.py [--base-url http://localhost:8000]
 
-    uv run python scripts/populate_graph.py
-    uv run python scripts/populate_graph.py --base-url http://localhost:8000
+Each (content, source) pair is one POST /v1/memories, so a relation can only
+form between entities mentioned in the same pair.
 
-Each FACTS tuple is (content, source) and becomes one POST /v1/memories
-call -- one extraction call per tuple, never batched, so the only relations
-that can form are the ones the LLM sees within a single tuple's content.
+Each cluster hides a two-hop chain whose ends are never mentioned together,
+so the far end is reachable only through the middle entity:
 
-ENGINEERED 2-HOP CHAINS (the eval's bridging cases are built against these).
-Exact relation_type strings are illustrative, not literal -- the extractor
-names them per-call (see extraction/prompts.py) and the exact verb varies
-across ingestion runs; traverse() is undirected, so the chain holds
-regardless of edge direction:
-  Cluster A: Dr. Sarah Chen -[authored]-> CRISPR-X stability study
-             -[cited_by RiboGen]-> RG-88
-  Cluster B: Dr. Amara Osei -[authored]-> Cascade v3 architecture
-             whitepaper <-[influenced_by]- AuroraML
-  Cluster C: Korrigan Cells Ltd -[produces]-> LFP-9 Cell
-             -[identified_as_root_cause_of]-> Voluntary Safety Recall R-2025-014
+  A: Dr. Sarah Chen -> CRISPR-X stability study -> RG-88
+  B: Dr. Amara Osei -> Cascade v3 architecture whitepaper -> AuroraML
+  C: Korrigan Cells Ltd -> LFP-9 Cell -> Voluntary Safety Recall R-2025-014
 
-For each chain, the A and C entities are NEVER mentioned in the same fact:
-the A->B edge and B->C edge are written as separate POST calls (different
-facts, different sources below). This is what's enforced at ingestion time,
-not just on paper -- the extractor can only invent a relation between
-entities that co-occur in one call's content, so the only way a direct A->C
-edge could appear is if a fact mentioned both, which none of the facts
-below do (see the comments marking the bridge tuples).
+The relation names on those edges are chosen by the extractor and vary.
 
-A provenance-arbitration case is also engineered here: Cluster A's "Series A
-funding round" amount is stated as "$42 million" by agent_finance and later
-restated as "$45 million" by agent_pr -- same entity, conflicting property,
-written by two different sources.
+Cluster A also has a property stated differently by two sources: the Series A
+round is "$42 million" according to agent_finance and "$45 million" according
+to agent_pr.
 """
 
 import argparse
@@ -61,14 +45,9 @@ CLUSTER_A_FACTS: list[tuple[str, str]] = [
         "agent_research",
     ),
     (
-        # Bridge A->B: Chen + the paper, no mention of RG-88/RiboGen. Kept
-        # short and atomic (single clause, two entities), and the title is
-        # NOT wrapped in single quotes -- a quoted title here was observed
-        # to reliably (100% across 10 repeated calls) trip a tool-use
-        # formatting bug in the underlying Anthropic call once the tenant
-        # had accumulated enough distinct relation types for
-        # _build_user_message's reuse hint to kick in (extractor.py);
-        # dropping the quotes removed the trigger entirely (0/6 repeats).
+        # First half of chain A; RG-88 and RiboGen are not mentioned. The
+        # title is unquoted: with quotes, the model returned malformed tool
+        # calls every time once the graph held many relation types.
         "Dr. Sarah Chen authored the paper CRISPR-X stability study while at Stanford University.",
         "agent_research",
     ),
@@ -78,19 +57,10 @@ CLUSTER_A_FACTS: list[tuple[str, str]] = [
         "agent_research",
     ),
     (
-        # Provenance conflict setup (paired with the agent_pr fact below):
-        # same entity, two sources, conflicting value for the same
-        # property. Property NAMING is non-deterministic per-call (the
-        # extractor isn't told what property name a prior call used, same
-        # class of issue as the documented relation-type-naming variance --
-        # see CLAUDE.md's "Property name non-determinism"), so this exact
-        # "the amount raised was $X" phrasing was chosen because it was
-        # verified to converge on the same `amount_raised` property key in
-        # 7/8 repeated (fact1, fact2) pairs -- enough to lock in, not
-        # because phrasing fully controls it. If a future re-seed lands on
-        # a different shared key, update eval/dataset.yaml's provenance
-        # case to match the real key (same pattern as the pre-existing
-        # Globex/Product Y price-property note in that file).
+        # One side of the funding conflict (agent_pr states the other below).
+        # The extractor picks property names itself. This phrasing gave the
+        # same `amount_raised` key in 7 of 8 runs; if a re-run lands on a
+        # different key, update the provenance case in eval/dataset.yaml.
         "Sequoia Capital and Atlas Venture both invested in Helios "
         "Therapeutics' Series A funding round; the amount raised was "
         "$42 million.",
@@ -116,14 +86,9 @@ CLUSTER_A_FACTS: list[tuple[str, str]] = [
         "agent_competitive_intel",
     ),
     (
-        # Bridge B->C: the paper + RG-88, no mention of Sarah Chen. RG-88 is
-        # made the sentence subject (rather than "RiboGen Inc's scientists")
-        # so the model reliably edges the paper directly to RG-88 instead of
-        # to RiboGen Inc as an intermediate -- the original "cited by
-        # RiboGen Inc's scientists ... developing RG-88" phrasing only
-        # produced a direct paper->RG-88 edge in 5/8 repeats (RiboGen Inc
-        # absorbed the edge instead in the other 3, stretching this to a
-        # 3-hop chain); this phrasing was verified at 8/8.
+        # Second half of chain A; Sarah Chen is not mentioned. RG-88 is the
+        # subject on purpose: phrased around "RiboGen Inc's scientists", 3 of
+        # 8 runs attached the paper to RiboGen Inc and made the chain 3 hops.
         "RG-88's development was directly informed by findings published "
         "in CRISPR-X stability study.",
         "agent_competitive_intel",
@@ -149,22 +114,14 @@ CLUSTER_B_FACTS: list[tuple[str, str]] = [
     ),
     ("Liang Wu studied at Helsinki Polytechnic.", "agent_oss"),
     (
-        # Bridge A->B: Osei + the whitepaper, no mention of AuroraML. Short,
-        # unquoted title, no trailing participial clause -- see the comment
-        # on Cluster A's CRISPR-X fact above for why titles aren't quoted;
-        # this fact additionally needed the participial clause dropped
-        # (verified: with it, this exact sentence still failed ~50% of
-        # repeats once the tenant had many accumulated relation types;
-        # without it, 0/6 failures).
+        # First half of chain B; AuroraML is not mentioned. Unquoted title
+        # and a single clause, for the reason given on the CRISPR-X fact.
         "Dr. Amara Osei authored the Cascade v3 architecture whitepaper.",
         "agent_oss",
     ),
     (
-        # Bridge B->C: the whitepaper + AuroraML/Priya Nair, no mention of
-        # Osei. Rephrased with Priya Nair/AuroraML as the lead subject
-        # (verified 0/8 failures) after the original "whitepaper directly
-        # influenced..." phrasing intermittently triggered the same
-        # tool-use bug (~1/6 repeats) referenced above.
+        # Second half of chain B; Osei is not mentioned. With the whitepaper
+        # as the subject the same malformed tool calls showed up now and then.
         "Priya Nair maintains AuroraML, a downstream library influenced by "
         "the Cascade v3 architecture whitepaper.",
         "agent_downstream",
@@ -197,7 +154,7 @@ CLUSTER_C_FACTS: list[tuple[str, str]] = [
         "agent_procurement",
     ),
     (
-        # Bridge A->B: Korrigan + the cell, no mention of the recall.
+        # First half of chain C; the recall is not mentioned.
         "Korrigan Cells Ltd is a tier-2 supplier that produces the LFP-9 Cell.",
         "agent_procurement",
     ),
@@ -239,13 +196,9 @@ CLUSTER_C_FACTS: list[tuple[str, str]] = [
         "agent_quality",
     ),
     (
-        # Bridge B->C: the cell + the recall, no mention of Korrigan. Split
-        # out from a single longer sentence that originally also mentioned
-        # an intermediate "battery defect" concept -- that version put
-        # LFP-9 Cell two hops from the recall (via the defect concept)
-        # instead of one, breaking the engineered 2-hop chain. This atomic
-        # form was verified to extract a direct LFP-9 Cell -> recall edge
-        # reliably across 3 repeated calls.
+        # Second half of chain C; Korrigan is not mentioned. A longer version
+        # that also named a "battery defect" put the defect between the cell
+        # and the recall, making the chain three hops.
         "The LFP-9 Cell was identified as the root cause of Solstice "
         "Motors' Voluntary Safety Recall R-2025-014.",
         "agent_quality",
@@ -263,18 +216,8 @@ _MAX_ATTEMPTS = 5
 
 
 def _post_memory(client: httpx.Client, content: str, source: str) -> dict[str, Any]:
-    """POST one fact, retrying on transient 5xx failures.
-
-    Observed in practice: the extraction call occasionally fails with a
-    transient Anthropic/Instructor-level glitch (the model emitting two
-    separate tool_use blocks instead of one, tripping a response_model
-    validation error) that surfaces here as a 500. This is non-determinism
-    in the underlying API call, not a problem with the fact's content --
-    retrying the same content succeeds. Not the same thing as the
-    "Property name non-determinism" and "Prompt non-determinism" issues
-    that are out of scope to fix; this is a transport-level retry, same
-    spirit as any other flaky-call handling.
-    """
+    """POST one fact. Extraction occasionally fails validation when the model
+    emits two tool calls instead of one; the same text succeeds on retry."""
     last_exc: httpx.HTTPStatusError | None = None
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         response = client.post(

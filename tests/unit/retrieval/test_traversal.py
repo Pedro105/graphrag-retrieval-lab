@@ -1,10 +1,5 @@
-"""Unit tests for the pure BFS traversal helper (retrieval/traversal.py).
-
-No FalkorDB: the graph is an in-memory adjacency map, and the seed/neighbour
-fetchers close over it -- this is the "mocked graph store" for traverse_from_
-seeds' BFS logic. Covers depth bounding, cycle handling, the max_entities
-cap, and natural termination.
-"""
+"""BFS traversal over an in-memory graph: depth, cycles, the max_entities
+cap, and edges between seeds."""
 
 from uuid import UUID, uuid4
 
@@ -111,10 +106,8 @@ async def test_relations_only_between_accumulated_entities():
 
 
 async def test_edges_between_seeds_are_returned():
-    # Regression: when interconnected entities are all seeds, the edges
-    # connecting them must still be returned. Previously the visited-exclusion
-    # in the neighbour fetch dropped every seed<->seed edge, so a recall whose
-    # seeds were interconnected came back with entities but 0 relations.
+    # Seeds are all "visited" before the first hop, so a fetch that skipped
+    # visited neighbours would return the entities and none of their edges.
     g = FakeGraph()
     a, b, c = (g.add_entity(n) for n in "ABC")
     g.add_edge(a, b)

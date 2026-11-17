@@ -1,20 +1,14 @@
-"""Claim adjudication: decide what a newly asserted fact does to the existing
-active claims about the same subject+predicate.
+"""Claim adjudication: what a new assertion does to the active claims about
+the same subject and predicate.
 
-Heuristic-first, Haiku-fallback (mirrors core/classifier.py): the common,
-unambiguous cases (corroboration, termination, same-agent update with a recency
-signal, cross-agent conflict) are decided deterministically with no LLM call;
-only a same-subject/same-predicate/different-object assertion with *no* recency
-signal needs the LLM, and only to answer "are these objects mutually exclusive,
-and if so does this supersede or dispute?".
+Most cases are decided by rule (see the table in docs/architecture.md). The
+LLM judge is asked only when the new assertion names a different object and
+the text gives no hint that it replaces the old one. Whether a predicate is
+single-valued is never configured; `works_at A` vs `works_at B` and
+`collaborated_with X` vs `collaborated_with Y` are told apart per case.
 
-Cardinality is adjudicated, never declared: there is no config of "functional"
-relations. `works_at A` vs `works_at B` resolves to supersede/dispute;
-`collaborated_with X` vs `collaborated_with Y` resolves to independent -- the LLM
-makes that call per claim-pair.
-
-`adjudicate` returns the list of FactClaims the write path must upsert: the new
-claim plus any existing claims whose status changed. It never deletes anything.
+`adjudicate` returns the claims to upsert: the new one and any existing ones
+whose status changed. Nothing is ever deleted.
 """
 
 from datetime import UTC, datetime
@@ -31,8 +25,7 @@ from graphrag_lab.models.fact_claim import ClaimAssertion, ClaimStatus, FactClai
 
 logger = structlog.get_logger()
 
-# Below this LLM confidence on a same-asserter conflict, default to `disputed`
-# rather than committing to a supersede -- the safe multi-agent default.
+# A judge verdict less confident than this becomes a dispute, not a supersede.
 JUDGE_CONFIDENCE_THRESHOLD = 0.6
 
 
@@ -67,8 +60,7 @@ def _new_claim(
 
 
 def _corroborate(claim: FactClaim, assertion: ClaimAssertion) -> FactClaim:
-    """Row 3: the same fact asserted again. Bump support, add the asserter, fold
-    in any property revision -- one active claim, not a duplicate."""
+    """The same fact asserted again: add support and any revised properties."""
     merged_claims = apply_claim(claim.claims, assertion.provenance, assertion.properties)
     properties, _provenance, _sources = derive_active_view(merged_claims)
     asserted_by = (
@@ -118,14 +110,10 @@ def _dispute(assertion: ClaimAssertion, candidates: list[FactClaim]) -> list[Fac
 
 
 def _has_other_asserter(candidates: list[FactClaim], asserter: str) -> bool:
-    """True if any conflicting candidate was asserted by someone other than the
-    new asserter -- the trigger that forces a dispute over a silent supersede."""
     return any(source != asserter for c in candidates for source in c.asserted_by)
 
 
 class AdjudicationVerdict(BaseModel):
-    """Instructor response_model for the LLM fallback (row 6)."""
-
     verdict: Literal["independent", "supersede", "dispute"]
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str = Field(min_length=1)
@@ -154,8 +142,6 @@ one-sentence justification in `reason` and a calibrated confidence in [0,1].\
 
 
 class ClaimJudge:
-    """LLM fallback for the one ambiguous adjudication case (row 6)."""
-
     def __init__(self, llm: StructuredLLM | None = None) -> None:
         self._llm = llm
 
@@ -190,34 +176,29 @@ async def adjudicate(
     candidates: list[FactClaim],
     judge: ClaimJudge | None = None,
 ) -> list[FactClaim]:
-    """Decide the new assertion against the active `candidates` (same subject +
-    same normalized predicate). Returns the FactClaims to upsert."""
+    """Weigh `assertion` against the active claims with the same subject and
+    predicate, and return the claims to upsert."""
     same_object = [c for c in candidates if c.object_id == assertion.object_id]
     other_object = [c for c in candidates if c.object_id != assertion.object_id]
 
-    # Rows 1-2: terminations / negations -> retract, never assert.
     if assertion.assertion_type in ("terminated", "negated"):
         if same_object:
             return [_retract(c) for c in same_object]
-        # No matching active claim: record the negation as a retracted claim so
-        # the explicit denial is preserved (claims are never silently dropped).
+        # Nothing to retract. Store the denial itself, as a retracted claim.
         return [_new_claim(assertion, "retracted", valid_to=_now())]
 
-    # Row 3: corroboration (exact same fact).
     if same_object:
         return [_corroborate(same_object[0], assertion)]
 
-    # Row 7: nothing to conflict with.
     if not other_object:
         return [_new_claim(assertion, "active")]
 
-    # Rows 4-6: different object for the same subject+predicate.
+    # A different object for the same subject and predicate.
     cross_asserter = _has_other_asserter(other_object, assertion.asserter)
 
     if assertion.has_recency_signal:
-        # The text frames this as the current/new state: a deliberate update.
-        # Same asserter -> supersede; different asserter -> dispute (never
-        # silently overwrite another source's claim).
+        # The text presents this as the new state. A source may update its
+        # own claim, but never overwrite someone else's.
         decision: Literal["supersede", "dispute"] = "dispute" if cross_asserter else "supersede"
     else:
         verdict = await (judge or ClaimJudge()).judge(assertion, other_object)
@@ -234,9 +215,9 @@ async def adjudicate(
         if cross_asserter:
             decision = "dispute"
         elif verdict.confidence < JUDGE_CONFIDENCE_THRESHOLD:
-            decision = "dispute"  # ambiguous same-asserter conflict -> safe default
+            decision = "dispute"
         else:
-            decision = verdict.verdict  # supersede or dispute, as judged
+            decision = verdict.verdict
 
     if decision == "supersede":
         return _supersede(assertion, other_object)

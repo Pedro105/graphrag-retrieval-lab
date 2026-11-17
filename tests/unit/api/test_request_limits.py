@@ -1,7 +1,4 @@
-"""Request-size ceilings: every bounded field feeds an LLM prompt or a graph
-traversal, so an oversized request must be rejected before any work (and any
-spend) happens. GraphStore and the embedding provider are mocked.
-"""
+"""Requests over the size bounds are rejected before any work is done."""
 
 from unittest.mock import AsyncMock
 
@@ -29,11 +26,7 @@ def client():
     "overrides",
     [
         {"content": "x" * (routes.MAX_CONTENT_CHARS + 1)},
-        {"source": "s" * (routes.MAX_SOURCE_CHARS + 1)},
-        {"evidence": ["e"] * (routes.MAX_EVIDENCE_ITEMS + 1)},
-        {"evidence": ["e" * (routes.MAX_EVIDENCE_CHARS + 1)]},
-        {"extra_scope": {f"k{i}": i for i in range(routes.MAX_SCOPE_KEYS + 1)}},
-        {"tenant_id": "t" * 41},
+        {"content": ""},
     ],
 )
 def test_oversized_memory_is_rejected_before_any_work(client, overrides):
@@ -52,7 +45,7 @@ def test_oversized_memory_is_rejected_before_any_work(client, overrides):
         {"query": "q" * (routes.MAX_QUERY_CHARS + 1)},
         {"limit": routes.MAX_SEED_LIMIT + 1},
         {"traversal_depth": routes.MAX_TRAVERSAL_DEPTH + 1},
-        {"max_entities": routes.MAX_ENTITIES_CAP + 1},
+        {"max_entities": routes.MAX_ENTITIES + 1},
     ],
 )
 def test_oversized_recall_is_rejected_before_any_work(client, overrides):
@@ -77,7 +70,7 @@ def test_requests_at_the_ceiling_are_accepted(client):
             "query": "q" * routes.MAX_QUERY_CHARS,
             "limit": routes.MAX_SEED_LIMIT,
             "traversal_depth": routes.MAX_TRAVERSAL_DEPTH,
-            "max_entities": routes.MAX_ENTITIES_CAP,
+            "max_entities": routes.MAX_ENTITIES,
         },
     )
 

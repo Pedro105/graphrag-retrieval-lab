@@ -1,9 +1,4 @@
-"""Unit tests for recall()'s limit semantics, fully mocked (no real API calls).
-
-Regression coverage: `limit` must bound the vector-seed step
-only. Traversal results from those seeds must survive even when `limit` is
-tight enough that seeds alone would exceed it.
-"""
+"""recall(): `limit` bounds the seeds only, `max_entities` bounds everything."""
 
 from unittest.mock import AsyncMock
 
@@ -34,10 +29,7 @@ def make_mocks(
     graph_store = AsyncMock(spec=GraphStore)
     graph_store.find_similar_entities.return_value = seeds
     graph_store.find_by_fulltext.return_value = []
-    # recall() now drives multi-hop expansion through traverse_from_seeds,
-    # which returns the seeds-plus-reached subgraph as
-    # (entities, relations, truncated). Flatten the per-entity traversal
-    # fixtures into that shape, including the seeds themselves.
+    # traverse_from_seeds returns the seeds along with what they reach.
     reached_entities = [entity for entity, _ in seeds]
     reached_relations: list[Relation] = []
     for entity, relations in traversal_results:
@@ -74,14 +66,11 @@ async def test_traversal_neighbours_survive_a_tight_seed_limit():
         graph_store=graph_store,
         embedding_provider=embedding_provider,
         limit=1,
-        # Pin routing so this limit-semantics test skips the classifier
-        # (caller-supplied params win) -- keeps it deterministic and offline.
+        # Pinning the mode skips the classifier.
         retrieval_mode="hybrid",
     )
 
-    # Old (buggy) behaviour re-sliced the merged seeds+traversal set to
-    # `limit`, which at limit=1 would silently drop the traversed neighbour
-    # (and the relation to it) even though traversal found it correctly.
+    # With limit=1 the neighbour must still be there.
     entity_ids = {entity.id for entity in result.entities}
     assert entity_ids == {seed.id, neighbour.id}
     assert result.relations == [relation]

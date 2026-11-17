@@ -1,9 +1,5 @@
-"""Unit tests for RetrievalStats on RecallResult, fully mocked (offline).
-
-Asserts stats are present and well-formed across every recall path: synthesis
-on/off, empty result, and a truncated subgraph; and that timing fields are
-positive floats with synthesis_ms None exactly when synthesis didn't run.
-"""
+"""RetrievalStats is filled in on every recall path: with and without
+synthesis, on an empty result, and when the subgraph was truncated."""
 
 from unittest.mock import AsyncMock
 

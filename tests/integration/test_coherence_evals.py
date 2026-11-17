@@ -1,16 +1,10 @@
-"""The multi-agent coherence checks: adjudication end to end with real extraction.
-
-Five named scenarios, end to end through the real write path (real Claude
-extraction + local embeddings + real Neo4j), asserting the reified-claim
-adjudicator's behaviour. Skips rather than fails when Neo4j or the LLM/
-embedding APIs aren't available -- same pattern as the other integration tests.
-
-These are the seed of the public coherence benchmark; keep them clean and named.
-"""
+"""Claim adjudication end to end: five scenarios through the real write path
+(real extraction, local embeddings, Neo4j). Skips without an API key."""
 
 import pytest
 
 from graphrag_lab.core.config import get_settings
+from graphrag_lab.graph import queries
 from graphrag_lab.models.relation import Relation
 from graphrag_lab.models.scope import Scope
 from graphrag_lab.core.service import remember
@@ -103,15 +97,12 @@ async def test_corroboration(store, embeddings, tenant_id):
     m1, _ = await _remember(store, embeddings, scope, "agent_a", "Pedro works at ASML.")
     await _remember(store, embeddings, scope, "agent_b", "Pedro works at ASML.")
 
-    graph = store._graph_for(tenant_id)
-    result = await graph.query(
-        "MATCH (c:Claim) WHERE c.status = 'active' RETURN c.support_count, c.asserted_by_json"
-    )
+    claims = await store._claims(queries.PROJECT_LIVE_CLAIMS, scope)
+    active = [claim for claim in claims if claim.status == "active"]
     # Exactly one active claim, asserted by both agents, support 2.
-    assert len(result.result_set) == 1, f"expected one active claim, got {result.result_set}"
-    support_count, asserted_by_json = result.result_set[0]
-    assert support_count == 2
-    assert "agent_a" in asserted_by_json and "agent_b" in asserted_by_json
+    assert len(active) == 1, f"expected one active claim, got {active}"
+    assert active[0].support_count == 2
+    assert set(active[0].asserted_by) == {"agent_a", "agent_b"}
 
 
 # --- independent_multivalue: not all conflicts are conflicts ------------------

@@ -32,12 +32,8 @@ class EmbeddingProvider(ABC):
 
 
 class LocalEmbeddingProvider(EmbeddingProvider):
-    """sentence-transformers model run in-process on CPU (or GPU if present).
-
-    The model loads lazily on first use; encoding runs in a worker thread so
-    it doesn't block the event loop. Vectors are L2-normalized, so cosine
-    similarity equals the dot product.
-    """
+    """A sentence-transformers model run in-process. Loaded on first use,
+    encoded in a worker thread, vectors L2-normalized."""
 
     def __init__(self, model_name: str, batch_size: int = 64) -> None:
         self._model_name = model_name

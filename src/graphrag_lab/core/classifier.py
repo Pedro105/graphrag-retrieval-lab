@@ -1,16 +1,8 @@
-"""Query classifier: decide a recall query's retrieval strategy (mode + depth)
-before any graph work happens.
+"""Query classifier: picks the seeding mode and traversal depth for a recall.
 
-Two stages (see docs/classifier_notes.md for the full rationale):
-
-  1. HeuristicClassifier -- pure, free, deterministic signal extraction.
-     Returns a (QueryClass, confidence) pair. The majority of queries are
-     classifiable here.
-  2. LLMClassifier -- structured LLM call (llm/client.py), made ONLY when
-     the heuristic confidence is below CONFIDENCE_THRESHOLD.
-
-QueryClassifier composes the two and maps the resulting class to a
-RetrievalStrategy via CLASS_TO_STRATEGY.
+Cheap rules handle the queries with an obvious shape. Only when they are
+unsure is the LLM asked. Background and tuning notes are in
+docs/classifier_notes.md.
 """
 
 import re
@@ -28,23 +20,14 @@ from graphrag_lab.models.classification import (
 
 logger = structlog.get_logger()
 
-# Heuristic confidence at/above which we trust the heuristic and skip the LLM.
-# Calibrated so the rules that fire on unambiguous shapes (an id/code, an
-# attribute question, an explicit causal phrase) clear it, while genuinely
-# ambiguous shapes (bare "how/why", keyword bags, questions with no
-# recognized verb) fall below it and defer to the LLM. See
-# docs/classifier_notes.md for where the cutoff came from and tuning notes.
+# Rules scoring at or above this are trusted; anything lower goes to the LLM.
+# The scores below are hand-set relative to this cutoff, not measured.
 CONFIDENCE_THRESHOLD = 0.85
 
-# The LLM doesn't return a calibrated probability, only a class + reasoning,
-# so when it decides we report a fixed confidence rather than fabricating a
-# score. Chosen above neither extreme: the query was ambiguous enough to need
-# the LLM, but the LLM's answer is still the system's best judgement.
+# The LLM returns a class, not a probability, so its results get a fixed value.
 _LLM_RESULT_CONFIDENCE = 0.7
 
-# class -> retrieval knobs. exact_lookup wants fulltext (the answer is the
-# named entity itself, and full-text nails identifiers vector search misses);
-# single_hop and relational both want hybrid seeding, differing only in depth.
+# Full-text finds identifiers like "RG-88" that vector search tends to miss.
 CLASS_TO_STRATEGY: dict[QueryClass, RetrievalStrategy] = {
     "exact_lookup": RetrievalStrategy(retrieval_mode="fulltext", traversal_depth=1),
     "single_hop": RetrievalStrategy(retrieval_mode="hybrid", traversal_depth=1),
@@ -53,18 +36,14 @@ CLASS_TO_STRATEGY: dict[QueryClass, RetrievalStrategy] = {
 
 _QUESTION_WORDS = {"who", "what", "where", "which", "when", "whom", "whose", "how", "why"}
 
-# Quantitative "how X" openers are attribute questions (single_hop), NOT
-# bridging questions -- they must suppress the generic "how/why" relational
-# signal below. "how many cells does X produce" asks one entity's attribute.
+# "How many cells does X produce" asks for one attribute, so it must not be
+# read as a relational "how" question.
 _QUANTITATIVE_RE = re.compile(
     r"\bhow\s+(many|much|long|old|big|far|tall|heavy|often|fast|wide|deep)\b"
 )
 
-# Explicit bridging/causal language: the clearest relational signal, and the
-# one case where an id/code in the query (e.g. "RG-88") should NOT pull the
-# query toward exact_lookup -- a code that's merely a participant in "how is X
-# connected to <code>" is relational. Substring match on the lowercased query,
-# using stems so inflections are caught ("connect" -> connected/connection).
+# Phrases that ask for a connection or a cause. Matched as substrings of the
+# lowercased query, so stems cover inflections (connect, connected, connection).
 _RELATIONAL_CUES = (
     "root cause",
     "connect",  # connected to, connection between
@@ -95,10 +74,7 @@ _RELATIONAL_CUES = (
     "depends on",
 )
 
-# Attribute/relationship verbs that, paired with a who/what/where/which
-# opener, mark a direct one-hop question (single_hop). Not exhaustive -- a
-# question with no verb on this list falls to a lower-confidence single_hop
-# guess that defers to the LLM.
+# Verbs that, after who/what/where/which, mark a one-hop question.
 _ATTRIBUTE_VERBS = (
     "lead",
     "manage",
@@ -128,8 +104,7 @@ _ATTRIBUTE_VERB_RE = re.compile(
     r"\b(" + "|".join(v.replace(" ", r"\s+") for v in _ATTRIBUTE_VERBS) + r")(s|es|ed|ing)?\b"
 )
 
-# A token is "id/code-like" if it mixes letters and digits ("RG-88", "LFP-9",
-# "R-2025-014", "HLX-203"). A bare number ("2025") is not a code on its own.
+# A code mixes letters and digits ("RG-88", "R-2025-014"); "2025" alone is not one.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'./-]*")
 _HAS_LETTER_RE = re.compile(r"[A-Za-z]")
 _HAS_DIGIT_RE = re.compile(r"\d")
@@ -140,11 +115,8 @@ def _is_id_code(token: str) -> bool:
 
 
 def _is_proper_noun_phrase(tokens: list[str]) -> bool:
-    """True if the query reads as a bare proper-noun phrase: most tokens
-    capitalized and the first one capitalized (e.g. "Korrigan Cells Ltd",
-    "Dr. Sarah Chen"). Lowercase connectors ("of", "the") are tolerated as
-    long as capitalized tokens are the majority.
-    """
+    """A bare name such as "Korrigan Cells Ltd" or "Dr. Sarah Chen": starts
+    with a capital and most of its words are capitalised."""
     if not tokens:
         return False
     alpha_tokens = [t for t in tokens if _HAS_LETTER_RE.search(t)]
@@ -155,15 +127,11 @@ def _is_proper_noun_phrase(tokens: list[str]) -> bool:
 
 
 class HeuristicClassifier:
-    """Stage 1: deterministic, dependency-free classification by signal
-    extraction. Pure -- no I/O, fully unit-testable. `classify` returns the
-    chosen class and a confidence in [0, 1]; QueryClassifier compares that
-    confidence to CONFIDENCE_THRESHOLD to decide whether to call the LLM.
+    """Rule-based classification. Returns (class, confidence in [0, 1]).
 
-    Implemented as a priority cascade rather than a weighted sum: each branch
-    is one named, documentable signal, and the first match wins. Ordering
-    matters -- explicit relational language is checked before id/code signals
-    so that a code appearing inside a bridging question doesn't hijack it.
+    The rules are tried in order and the first match wins. Relational phrasing
+    is checked before codes so that "how is X connected to RG-88" is not
+    mistaken for a lookup of RG-88.
     """
 
     def classify(self, query: str) -> tuple[QueryClass, float]:
@@ -175,38 +143,27 @@ class HeuristicClassifier:
         qword = first if first in _QUESTION_WORDS else None
         quantitative = bool(_QUANTITATIVE_RE.search(lower))
 
-        # 1. Explicit bridging/causal language -> relational. Highest priority:
-        #    overrides an id/code that's only a participant in the question.
         if any(cue in lower for cue in _RELATIONAL_CUES):
             return "relational", 0.9
 
-        # 2. Bare "how"/"why" with no causal phrase and not quantitative: a
-        #    real but weaker relational lean. Deliberately below threshold so
-        #    it defers to the LLM rather than committing to depth-2.
+        # A bare how/why leans relational, but not enough to skip the LLM.
         if qword in {"how", "why"} and not quantitative:
             return "relational", 0.78
 
-        # 3. exact_lookup: an id/code, or a bare proper-noun phrase, with no
-        #    question word framing it as a question about the entity.
+        # A code or a bare name, not phrased as a question.
         if qword is None and any(_is_id_code(t) for t in tokens):
             return "exact_lookup", 0.95 if n <= 4 else 0.7
         if qword is None and _is_proper_noun_phrase(tokens) and n <= 5:
             return "exact_lookup", 0.88
 
-        # 4. single_hop: a quantitative "how many/much/..." attribute
-        #    question, or a who/what/where/which question carrying a known
-        #    attribute verb.
         if quantitative:
             return "single_hop", 0.86
         if qword in {"who", "what", "where", "which"} and _ATTRIBUTE_VERB_RE.search(lower):
             return "single_hop", 0.88
         if qword in {"who", "what", "where", "which"}:
-            # A question with no recognized verb: probably single_hop, but
-            # uncertain enough to let the LLM confirm.
             return "single_hop", 0.6
 
-        # 5. Nothing fired confidently (keyword bag, mixed-case noun phrase,
-        #    etc.): low-confidence single_hop guess -> LLM fallback decides.
+        # No rule matched; the low score sends it to the LLM.
         return "single_hop", 0.3
 
 
@@ -235,17 +192,12 @@ exact_lookup. Put a one-sentence justification in `reasoning`.\
 
 
 class _LLMClassification(BaseModel):
-    """Instructor response_model for the LLM fallback. `reasoning` is for
-    observability only (logged at DEBUG) -- it is not surfaced to callers.
-    """
-
+    # `reasoning` is only logged.
     query_class: QueryClass
     reasoning: str = Field(min_length=1)
 
 
 class LLMClassifier:
-    """Stage 2: called only on low-confidence heuristic results."""
-
     def __init__(self, llm: StructuredLLM | None = None) -> None:
         self._llm = llm
 
@@ -262,9 +214,7 @@ class LLMClassifier:
 
 
 class QueryClassifier:
-    """Two-stage classifier: heuristic first, LLM only when the heuristic is
-    not confident enough. Exposes a single `classify(query) -> ClassifierResult`.
-    """
+    """Rules first, LLM only when the rules are below `threshold`."""
 
     def __init__(
         self,

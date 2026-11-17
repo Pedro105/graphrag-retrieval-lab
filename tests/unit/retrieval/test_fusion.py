@@ -1,4 +1,4 @@
-"""Unit tests for reciprocal_rank_fusion -- pure Python, no graph dependency."""
+"""Reciprocal rank fusion."""
 
 from uuid import uuid4
 
