@@ -8,7 +8,7 @@ The guiding question: **does the graph actually help, and can a learned
 retriever choose better subgraphs than heuristics when the graph was built
 by an LLM and is therefore noisy?** See the [research plan](docs/research-plan.md).
 
-[![CI](https://github.com/Pedro105/graphstore/actions/workflows/ci.yml/badge.svg)](https://github.com/Pedro105/graphstore/actions/workflows/ci.yml)
+[![CI](https://github.com/Pedro105/graphrag-retrieval-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/Pedro105/graphrag-retrieval-lab/actions/workflows/ci.yml)
 
 ## Status
 
