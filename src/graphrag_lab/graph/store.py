@@ -42,6 +42,19 @@ class GraphStore(ABC):
         """
 
     @abstractmethod
+    async def bulk_write(
+        self,
+        tenant_id: str,
+        entities: list[Entity],
+        claims: list[FactClaim],
+        memory_id: str,
+        batch_size: int = 1_000,
+    ) -> None:
+        """Write many entities, then many claims, in batches, bypassing
+        extraction and adjudication. For loading curated graphs (benchmark
+        gold triples) where every fact is already known to be true."""
+
+    @abstractmethod
     async def find_active_claims(
         self, scope: Scope, subject_id: UUID, predicate: str
     ) -> list[FactClaim]:

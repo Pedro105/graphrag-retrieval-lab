@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down api lint typecheck test test-integration check populate eval
+.PHONY: help install up down api lint typecheck test test-integration check populate eval bench bench-smoke
 
 help:  ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -36,3 +36,9 @@ populate:  ## Ingest the synthetic eval graph through the running API
 
 eval:  ## Run the recall smoke eval against the running API
 	uv run python eval/run_eval.py
+
+bench-smoke:  ## Benchmark smoke run: 50 questions (needs `make up`)
+	uv run python -m graphrag_lab.bench run --config configs/bench/smoke.yaml
+
+bench:  ## Full retrieval benchmark on 2WikiMultiHopQA (needs `make up`; ~1h on CPU first time)
+	uv run python -m graphrag_lab.bench run --config configs/bench/2wiki-dev.yaml

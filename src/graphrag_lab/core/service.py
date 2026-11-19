@@ -40,7 +40,7 @@ _UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9_]+")
 _ASSERTION_ORDER = {"terminated": 0, "negated": 0, "asserted": 1}
 
 
-def _normalize_relation_type(relation_type: str) -> str:
+def normalize_predicate(relation_type: str) -> str:
     """Coerce LLM-produced relation types into a safe Cypher edge type.
 
     Real LLM output doesn't always match the prompt's snake_case
@@ -93,7 +93,7 @@ async def remember(
                 target_name=extracted_relation.target_name,
             )
             continue
-        predicate = _normalize_relation_type(extracted_relation.relation_type)
+        predicate = normalize_predicate(extracted_relation.relation_type)
         # The display Relation on the returned Memory reflects what this write
         # asserted (raw predicate); the persisted fact is the adjudicated claim.
         relations.append(
@@ -144,7 +144,7 @@ async def remember(
     return memory, tokens_used
 
 
-async def _seed_entities(
+async def seed_entities(
     query: str,
     scope: Scope,
     graph_store: GraphStore,
@@ -254,7 +254,7 @@ async def recall(
     classification actually runs.
 
     `limit` is the maximum number of seed entities returned from the seed
-    step (see `_seed_entities` -- vector similarity, full-text, or both
+    step (see `seed_entities` -- vector similarity, full-text, or both
     fused via RRF, depending on `retrieval_mode`). Traversal results from
     those seeds are not subject to this limit -- the returned RecallResult
     can contain more than `limit` entities once multi-hop neighbours are
@@ -278,21 +278,21 @@ async def recall(
         query, traversal_depth, retrieval_mode, classifier
     )
 
-    seed_entities = await _seed_entities(
+    seeds = await seed_entities(
         query, scope, graph_store, embedding_provider, limit, effective_mode
     )
 
     # Preserve the seed Entity objects (they carry the embedding vector from
     # the seed step); traverse_from_seeds re-fetches seeds too, but setdefault
     # below keeps the originals and overlays only the newly reached entities.
-    entities_by_id: dict[UUID, Entity] = {entity.id: entity for entity in seed_entities}
+    entities_by_id: dict[UUID, Entity] = {entity.id: entity for entity in seeds}
     relations_by_id: dict[UUID, Relation] = {}
     truncated = False
 
-    if seed_entities:
+    if seeds:
         reached_entities, reached_relations, truncated = await graph_store.traverse_from_seeds(
             scope,
-            [str(entity.id) for entity in seed_entities],
+            [str(entity.id) for entity in seeds],
             effective_depth,
             max_entities,
         )
@@ -311,7 +311,7 @@ async def recall(
             )
 
     # limit bounds the seed step only (passed as `k`/`limit` into
-    # _seed_entities above). Once seeded, traversal neighbours are kept in
+    # seed_entities above). Once seeded, traversal neighbours are kept in
     # full -- re-slicing the merged seeds+traversal dict here would
     # silently discard exactly the graph-hop results GraphRAG exists to
     # surface (regression-tested in tests/unit/core/test_service_recall.py).
@@ -331,7 +331,7 @@ async def recall(
         total_ms=0.0,  # finalised after synthesis below
         retrieval_ms=(retrieval_end - start) * 1000,
         synthesis_ms=None,
-        seeds_found=len(seed_entities),
+        seeds_found=len(seeds),
         nodes_traversed=len(entities),
         relations_found=len(relations),
         depth_reached=effective_depth,

@@ -187,6 +187,38 @@ class Neo4jGraphStore(GraphStore):
                 )
         return memory_id
 
+    async def bulk_write(
+        self,
+        tenant_id: str,
+        entities: list[Entity],
+        claims: list[FactClaim],
+        memory_id: str,
+        batch_size: int = 1_000,
+    ) -> None:
+        if any(entity.embedding is None for entity in entities):
+            raise ValueError("bulk_write requires every entity to carry an embedding")
+        for start in range(0, len(entities), batch_size):
+            rows = [
+                {
+                    "id": str(entity.id),
+                    "props": entity_to_node_props(entity, memory_id),
+                    "embedding": entity.embedding,
+                }
+                for entity in entities[start : start + batch_size]
+            ]
+            await self._run(queries.BULK_UPSERT_ENTITIES, {"rows": rows}, tenant_id=tenant_id)
+        for start in range(0, len(claims), batch_size):
+            rows = [
+                {
+                    "id": str(claim.id),
+                    "props": claim_to_node_props(claim, memory_id),
+                    "subject_id": str(claim.subject_id),
+                    "object_id": str(claim.object_id),
+                }
+                for claim in claims[start : start + batch_size]
+            ]
+            await self._run(queries.BULK_UPSERT_CLAIMS, {"rows": rows}, tenant_id=tenant_id)
+
     async def upsert_claim(self, claim: FactClaim, memory_id: str) -> None:
         await self._run(
             queries.UPSERT_CLAIM,
@@ -290,9 +322,11 @@ class Neo4jGraphStore(GraphStore):
         if not sanitized:
             return []
         try:
+            query = queries.FULLTEXT_SEARCH.replace(
+                "__FINDEX__", f"`{fulltext_index_name(scope.tenant_id)}`"
+            )
             result = await self._run(
-                queries.FULLTEXT_SEARCH,
-                {"index": fulltext_index_name(scope.tenant_id), "q": sanitized, "limit": limit},
+                query, {"q": sanitized, "limit": limit}, tenant_id=scope.tenant_id
             )
         except ClientError as exc:
             if _is_missing_index(exc):

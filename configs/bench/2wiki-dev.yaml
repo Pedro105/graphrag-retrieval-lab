@@ -1,0 +1,22 @@
+# First benchmark run: every retriever on 1,000 questions from the
+# 2WikiMultiHopQA validation split, against a pooled corpus of 3,000
+# questions' paragraphs and gold triples (the other 2,000 are distractors).
+name: 2wiki-dev
+split: validation
+n_corpus: 3000
+n_eval: 1000
+seed: 0
+budgets: [64, 128, 256, 512, 1024]
+embedding_model: BAAI/bge-small-en-v1.5
+n_seeds: 5
+retrievers:
+  - dense_paragraph
+  - bm25_paragraph
+  - hybrid_paragraph
+  - dense_sentence
+  - dense_triple
+  - graph_bfs_d1
+  - graph_bfs_d2
+  - graph_ppr
+  - oracle_sentence
+  - oracle_triple

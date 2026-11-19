@@ -41,6 +41,26 @@ MERGE (c)-[:SUBJECT]->(s)
 MERGE (c)-[:OBJECT]->(o)
 """
 
+# Batched variants for bulk loading curated graphs.
+BULK_UPSERT_ENTITIES = """
+UNWIND $rows AS row
+MERGE (n:Entity {id: row.id})
+SET n:__T__, n += row.props
+WITH n, row
+CALL db.create.setNodeVectorProperty(n, 'embedding', row.embedding)
+"""
+
+BULK_UPSERT_CLAIMS = """
+UNWIND $rows AS row
+MERGE (c:Claim {id: row.id})
+SET c:__T__, c += row.props
+WITH c, row
+MATCH (s:Entity:__T__ {id: row.subject_id})
+MATCH (o:Entity:__T__ {id: row.object_id})
+MERGE (c)-[:SUBJECT]->(s)
+MERGE (c)-[:OBJECT]->(o)
+"""
+
 # --- claim reads -------------------------------------------------------------
 
 # Conflict/corroboration candidates: same subject and normalized predicate,
@@ -91,7 +111,9 @@ ORDER BY score DESC
 """
 
 FULLTEXT_SEARCH = """
-CALL db.index.fulltext.queryNodes($index, $q, {limit: $limit}) YIELD node, score
+CYPHER 25
+MATCH (node:__T__)
+SEARCH node IN (FULLTEXT INDEX __FINDEX__ FOR $q LIMIT $limit) SCORE AS score
 RETURN node, score
 ORDER BY score DESC
 """

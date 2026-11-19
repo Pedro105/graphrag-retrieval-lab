@@ -2,20 +2,23 @@
 retrieval methods (vector similarity, full-text keyword search) into one
 ranked list, without needing the methods' scores to be on comparable scales.
 
-Pure Python, no graph/store dependency -- the seed step in
-`core/service.py` is the only caller.
+Pure Python and generic over the id type: the seed step in `core/service.py`
+fuses entity ids, the benchmark's hybrid baseline fuses paragraph indexes.
 """
 
-from uuid import UUID
+from collections.abc import Hashable
+from typing import TypeVar
+
+K = TypeVar("K", bound=Hashable)
 
 DEFAULT_K_RRF = 60
 
 
 def reciprocal_rank_fusion(
-    vector_results: list[tuple[UUID, int]],
-    fulltext_results: list[tuple[UUID, int]],
+    vector_results: list[tuple[K, int]],
+    fulltext_results: list[tuple[K, int]],
     k_rrf: int = DEFAULT_K_RRF,
-) -> list[tuple[UUID, float]]:
+) -> list[tuple[K, float]]:
     """Fuse two (entity_id, rank) lists into one (entity_id, score) list.
 
     `rank` is 1-based, best match first, independently per input list. An
@@ -24,7 +27,7 @@ def reciprocal_rank_fusion(
     entities appearing in only one, without either list's raw scores ever
     being compared directly. Returned sorted by score descending.
     """
-    scores: dict[UUID, float] = {}
+    scores: dict[K, float] = {}
     for entity_id, rank in vector_results:
         scores[entity_id] = scores.get(entity_id, 0.0) + 1.0 / (rank + k_rrf)
     for entity_id, rank in fulltext_results:

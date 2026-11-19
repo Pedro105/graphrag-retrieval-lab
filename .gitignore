@@ -56,5 +56,7 @@ Thumbs.db
 # Logs
 *.log
 
-# LLM response cache
+# LLM response, embedding and benchmark caches
 .cache/
+# Smoke benchmark output (full runs under results/ are committed)
+results/smoke/
