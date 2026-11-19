@@ -67,3 +67,19 @@ async def test_bfs_and_ppr_retrieve_the_chain_from_neo4j(store, tenant_id):
     ppr = await ppr_retriever.rank(question)
     assert {unit.key for unit in ppr.units} == chain
     assert ppr.diagnostics["seed_hit"] is True
+
+
+async def test_same_corpus_in_two_tenants_shares_no_nodes(store, tenant_id):
+    """Regression: deterministic ids used to be name-only, so a second tenant
+    merged into the first one's nodes and dropping it deleted them."""
+    other = f"{tenant_id}_b"
+    corpus = build_corpus([FILM_ROW, DISTRACTOR], n_eval=1)
+    encoder = HashingEncoder()
+    expected = (len(corpus.entities), len(corpus.triples))
+    try:
+        await load_gold_graph(store, corpus, encoder, tenant_id)
+        await load_gold_graph(store, corpus, encoder, other)
+        await store.drop_graph(other)
+        assert await store.graph_stats(tenant_id) == expected
+    finally:
+        await store.drop_graph(other)

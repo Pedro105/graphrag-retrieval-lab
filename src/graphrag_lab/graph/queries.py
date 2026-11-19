@@ -19,9 +19,13 @@ CONSTRAINTS = (
 
 # --- writes ------------------------------------------------------------------
 
+# Writes MERGE on the tenant label as well as the id. Ids are unique
+# database-wide (see CONSTRAINTS), so an id reused across tenants fails loudly
+# on the constraint instead of silently sharing one node between tenants.
+
 UPSERT_ENTITY = """
-MERGE (n:Entity {id: $id})
-SET n:__T__, n += $props
+MERGE (n:Entity:__T__ {id: $id})
+SET n += $props
 """
 
 SET_ENTITY_EMBEDDING = """
@@ -32,8 +36,8 @@ CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
 # Create-or-update a claim by id (status transitions reuse this) and ensure its
 # structural edges exist. MERGE on the edges keeps re-upserts idempotent.
 UPSERT_CLAIM = """
-MERGE (c:Claim {id: $id})
-SET c:__T__, c += $props
+MERGE (c:Claim:__T__ {id: $id})
+SET c += $props
 WITH c
 MATCH (s:Entity:__T__ {id: $subject_id})
 MATCH (o:Entity:__T__ {id: $object_id})
@@ -44,16 +48,16 @@ MERGE (c)-[:OBJECT]->(o)
 # Batched variants for bulk loading curated graphs.
 BULK_UPSERT_ENTITIES = """
 UNWIND $rows AS row
-MERGE (n:Entity {id: row.id})
-SET n:__T__, n += row.props
+MERGE (n:Entity:__T__ {id: row.id})
+SET n += row.props
 WITH n, row
 CALL db.create.setNodeVectorProperty(n, 'embedding', row.embedding)
 """
 
 BULK_UPSERT_CLAIMS = """
 UNWIND $rows AS row
-MERGE (c:Claim {id: row.id})
-SET c:__T__, c += row.props
+MERGE (c:Claim:__T__ {id: row.id})
+SET c += row.props
 WITH c, row
 MATCH (s:Entity:__T__ {id: row.subject_id})
 MATCH (o:Entity:__T__ {id: row.object_id})

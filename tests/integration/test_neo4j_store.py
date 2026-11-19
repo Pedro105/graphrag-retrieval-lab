@@ -210,6 +210,31 @@ async def test_tenant_isolation_is_structural(store, tenant_id):
         await store.drop_graph(other_tenant_id)
 
 
+async def test_reusing_an_entity_id_in_another_tenant_fails_loudly(store, tenant_id):
+    """Ids are unique database-wide. Writing an existing id under another
+    tenant must raise, never merge the two tenants onto one node."""
+    from neo4j.exceptions import ConstraintError
+
+    other_tenant_id = f"test{uuid.uuid4().hex[:16]}"
+    scope_a, scope_b = make_scope(tenant_id), make_scope(other_tenant_id)
+    provenance = make_provenance()
+    entity_a = Entity(name="Pedro", entity_type="person", scope=scope_a, provenance=provenance)
+    entity_b = entity_a.model_copy(update={"scope": scope_b})
+
+    try:
+        await store.write_memory(
+            Memory(content="A", entities=[entity_a], scope=scope_a, provenance=provenance)
+        )
+        with pytest.raises(ConstraintError):
+            await store.write_memory(
+                Memory(content="B", entities=[entity_b], scope=scope_b, provenance=provenance)
+            )
+        assert await store.get_entity(entity_a.id, other_tenant_id) is None
+        assert await store.get_entity(entity_a.id, tenant_id) is not None
+    finally:
+        await store.drop_graph(other_tenant_id)
+
+
 async def test_find_similar_entities_returns_empty_for_uninitialized_tenant(store, tenant_id):
     scope = make_scope(tenant_id, user_id="u_1")
     results = await store.find_similar_entities(scope, [1.0, 0.0, 0.0, 0.0], None, 5)

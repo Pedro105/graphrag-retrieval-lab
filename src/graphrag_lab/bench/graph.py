@@ -32,13 +32,15 @@ SOURCE = "2wikimultihopqa"
 _NAMESPACE = uuid.UUID("6f1d4c56-1b8e-4f4a-9d1e-2b7f0c0a7e11")
 
 
-def entity_id(name: str) -> uuid.UUID:
-    """Deterministic ids, so reloading the same corpus yields the same graph."""
-    return uuid.uuid5(_NAMESPACE, f"entity:{name}")
+def entity_id(tenant_id: str, name: str) -> uuid.UUID:
+    """Deterministic ids, so reloading the same corpus yields the same graph.
+    Scoped by tenant: ids are unique database-wide, so two tenants holding the
+    same entity must still get distinct nodes."""
+    return uuid.uuid5(_NAMESPACE, f"{tenant_id}:entity:{name}")
 
 
-def claim_id(triple: Triple) -> uuid.UUID:
-    return uuid.uuid5(_NAMESPACE, f"claim:{triple.text}")
+def claim_id(tenant_id: str, triple: Triple) -> uuid.UUID:
+    return uuid.uuid5(_NAMESPACE, f"{tenant_id}:claim:{triple.text}")
 
 
 async def load_gold_graph(
@@ -60,7 +62,7 @@ async def load_gold_graph(
 
     entities = [
         Entity(
-            id=entity_id(name),
+            id=entity_id(tenant_id, name),
             name=name,
             entity_type="Entity",
             observed_types=["Entity"],
@@ -73,11 +75,11 @@ async def load_gold_graph(
     ]
     claims = [
         FactClaim(
-            id=claim_id(triple),
+            id=claim_id(tenant_id, triple),
             predicate=normalize_predicate(triple.predicate),
             raw_predicate=triple.predicate,
-            subject_id=entity_id(triple.subject),
-            object_id=entity_id(triple.object),
+            subject_id=entity_id(tenant_id, triple.subject),
+            object_id=entity_id(tenant_id, triple.object),
             status="active",
             asserted_by=[SOURCE],
             scope=scope,
