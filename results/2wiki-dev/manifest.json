@@ -1,0 +1,53 @@
+{
+  "config": {
+    "name": "2wiki-dev",
+    "split": "validation",
+    "n_corpus": 3000,
+    "n_eval": 1000,
+    "seed": 0,
+    "background_split": "train",
+    "hub_max": 20,
+    "budgets": [
+      64,
+      128,
+      256,
+      512,
+      1024
+    ],
+    "retrievers": [
+      "dense_paragraph",
+      "bm25_paragraph",
+      "hybrid_paragraph",
+      "dense_sentence",
+      "dense_triple",
+      "graph_bfs_d1",
+      "graph_bfs_d2",
+      "graph_ppr",
+      "oracle_sentence",
+      "oracle_triple"
+    ],
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "n_seeds": 5,
+    "bootstrap_resamples": 1000
+  },
+  "corpus": {
+    "fingerprint": "9ea56b81bcb3",
+    "questions": 3000,
+    "background_questions": 10691,
+    "eval_questions": 1000,
+    "bridge_eval_questions": 537,
+    "paragraphs": 24838,
+    "sentences": 98746,
+    "triples": 21338,
+    "entities": 21766
+  },
+  "git_sha": "d2383da405f2fe33422fbd18cb8e509602306591",
+  "python": "3.12.3",
+  "packages": {
+    "sentence-transformers": "6.3.0",
+    "torch": "2.15.0+cpu",
+    "neo4j": "6.4.1",
+    "bm25s": "0.3.16",
+    "numpy": "2.5.5"
+  }
+}

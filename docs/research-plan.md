@@ -99,11 +99,11 @@ Each milestone leaves the repository in a demonstrable state.
 
 1. **Cleanup** (done): remove the SaaS layer, rename, compose stack, CI,
    cached LLM client, docs.
-2. **Neo4j port and benchmark harness** (in progress): local embeddings and
-   the Neo4j `GraphStore` are done; remaining are the retriever interface
-   and passage baselines, the 2WikiMultiHopQA loader and ingestion,
-   personalized PageRank, metrics with confidence intervals, and the first
-   results table (RQ1).
+2. **Neo4j port and benchmark harness** (done): local embeddings, the Neo4j
+   `GraphStore`, text, fact and graph baselines (B1–B4 plus dense triple
+   search and oracles), metrics with bootstrap CIs, and the first results
+   (`results/2wiki-dev`). Answer generation (B0 and QA accuracy) is deferred
+   until an LLM reader is chosen.
 3. **Learned retriever**: M1 and M2, training pipeline, experiment
    tracking, model card (RQ2).
 4. **Robustness study**: corruption operators and degradation curves (RQ3);

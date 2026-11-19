@@ -97,6 +97,10 @@ make bench                  # configs/bench/2wiki-dev.yaml
 uv run python -m graphrag_lab.bench report results/2wiki-dev   # rebuild tables
 ```
 
+On a 4-core CPU the first full run takes about an hour, almost all of it
+embedding ~100k sentences and ~25k paragraphs. Reruns reuse the cache and
+take about 11 minutes, mostly depth-2 BFS in Neo4j.
+
 Embeddings are cached in `.cache/bench/embeddings/<corpus fingerprint>/`, and
 the gold graph is reused when its Neo4j tenant (`bench_<fingerprint>`)
 already holds it. Each run writes `manifest.json` with the config, corpus
