@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "types-pyyaml>=6.0",
+    "matplotlib>=3.9",
     "pre-commit>=3.7",
 ]
 
@@ -63,7 +64,7 @@ strict = true
 
 # Untyped third-party libraries used by the benchmark.
 [[tool.mypy.overrides]]
-module = ["pyarrow.*", "bm25s.*", "scipy.*"]
+module = ["pyarrow.*", "bm25s.*", "scipy.*", "matplotlib.*"]
 ignore_missing_imports = true
 
 

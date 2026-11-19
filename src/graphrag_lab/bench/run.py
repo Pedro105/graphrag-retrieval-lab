@@ -40,7 +40,14 @@ from graphrag_lab.bench.data import (
 from graphrag_lab.bench.encoding import Encoder
 from graphrag_lab.bench.graph import GraphBFSRetriever, GraphPPRRetriever, load_gold_graph
 from graphrag_lab.bench.metrics import answer_recall, support_recall
-from graphrag_lab.bench.report import markdown_tables, read_records, summarize, write_records
+from graphrag_lab.bench.report import (
+    markdown_tables,
+    plot_budget_curves,
+    read_records,
+    summarize,
+    type_table,
+    write_records,
+)
 from graphrag_lab.bench.retrievers import (
     BM25ParagraphRetriever,
     DenseParagraphRetriever,
@@ -153,6 +160,24 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def write_report(
+    out_dir: Path, config: BenchConfig, summary: list[dict[str, Any]], records: list[dict[str, Any]]
+) -> None:
+    order = [name for name in RETRIEVERS if name in config.retrievers]
+    mid_budget = sorted(config.budgets)[len(config.budgets) // 2]
+    (out_dir / "results.md").write_text(
+        f"# {config.name}\n\n"
+        + markdown_tables(summary, order)
+        + "\n"
+        + type_table(records, mid_budget, order)
+    )
+    plot_budget_curves(
+        summary,
+        out_dir / "answer_recall.png",
+        title="Is the answer in the retrieved context? (bridge questions, 95% CI)",
+    )
+
+
 def write_outputs(
     out_dir: Path, config: BenchConfig, corpus: Corpus, records: list[dict[str, Any]]
 ) -> None:
@@ -160,10 +185,7 @@ def write_outputs(
     write_records(records, out_dir / "per_question.jsonl.gz")
     summary = summarize(records, resamples=config.bootstrap_resamples)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    order = [name for name in RETRIEVERS if name in config.retrievers]
-    (out_dir / "results.md").write_text(
-        f"# {config.name}\n\n" + markdown_tables(summary, order) + "\n"
-    )
+    write_report(out_dir, config, summary, records)
     manifest = {
         "config": config.model_dump(),
         "corpus": {
@@ -248,7 +270,4 @@ def main(argv: list[str] | None = None) -> None:
         records = read_records(args.results_dir / "per_question.jsonl.gz")
         summary = summarize(records, resamples=config.bootstrap_resamples)
         (args.results_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-        order = [name for name in RETRIEVERS if name in config.retrievers]
-        (args.results_dir / "results.md").write_text(
-            f"# {config.name}\n\n" + markdown_tables(summary, order) + "\n"
-        )
+        write_report(args.results_dir, config, summary, records)
